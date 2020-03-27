@@ -486,6 +486,9 @@ LAMBDAF = BETAFREAL / OMEGAF0
 [name = LAMBDAB]
 LAMBDAB = BETAFREAL / OMEGAB0
 
+[name = LAMBDAB_nan]
+LAMBDAB = nan
+
 [name = LEVAT]
 LEVAT = mean(levat)
 
@@ -521,6 +524,9 @@ INFL = (Pm-Pm_1)/Pm
 
 [name = INFLW0]
 INFLW0 = (Wm0 - Wm0_1)/Wm0_1
+
+[name = INFLW0_nan]
+INFLW0 = nan
 
 [name = OMEGAH_PM]
 OMEGAH_PM = OMEGAH/H/Pm
@@ -1613,7 +1619,12 @@ PIGRF
 PIGRF2
 PIGRB
 LAMBDAF
-LAMBDAB
+if (OMEGAB0>0){
+    LAMBDAB
+    }
+if (OMEGAB0==0){
+    LAMBDAB_nan
+    }
 LEVAT
 RB1
 RB2
@@ -1625,7 +1636,12 @@ INTF
 INTB
 rBm
 INFL
-INFLW0
+if (Wm0_1>0){
+    INFLW0
+    }
+if (Wm0_1==0){
+    INFLW0_nan
+    }
 
 OMEGAH_PM
 OMEGAF_PM
