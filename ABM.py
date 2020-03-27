@@ -1,6 +1,6 @@
 import re
 import numpy as np
-from os import path
+import os
 import pickle
 
 def repl(m):
@@ -72,547 +72,594 @@ def replace_elem(s, elem, elem_):
 
 class ABM:
     def __init__(self, modfile, cache=False):
-        if cache == False or not(path.exists("compiledModel.py")):
-            self.modfile = modfile
-            block_list_arguments = ['SETTINGS', 'AGENTS', 'ENDO_VAR', 'ENDO_MAT', 'ENDO_INIT', 'EXO_PARAM', 'MAT_TYPE', 'ENDO_EQ', 'STEPS', 'PARAM_ESTIM']
-            default_agent_options = ['depend', 'num', 'tag', 'iterator', 'group']
-            default_eq_options = ['equation', 'condition']
-            default_settings_options = ['float_isclose', 'numba']
-            # The list below contains the numpy functions which are supported.
-            # Other functions may be added at the user's own risk
-            self.supported_numpy_functions = ['log', 'exp', 'max', 'fmax', 'min', 'fmin', 'sum', 'mean', 'std', 'random.randint',
-                                         'random.uniform', 'random.normal', 'random.permutation', 'ones', 'zeros', 'floor', 'ceil', 'prod',
-                                         'arange', 'concatenate', 'nansum','isnan', 'isinf', 'round', 'size', 'shape', 'int_', 'nan', 'argsort',
-                                         'reshape', 'operator.__lt__', 'operator.__gt__', 'logical_not',
-                                         'dtype', 'int64', 'abs', 'inf', 'amin']
+        # Initialize variables necessary regardless of compilation
+        self.plot_normalization = {}
+        
+        if cache == False or not(os.path.exists("compiledModel.py")):
+            writeModel = True
+        else:
+            writeModel = False
+            
+        self.modfile = modfile
+        block_list_arguments = ['SETTINGS', 'AGENTS', 'ENDO_VAR', 'ENDO_MAT', 'ENDO_INIT', 'EXO_PARAM', 'MAT_TYPE', 'ENDO_EQ', 'STEPS']
+        default_agent_options = ['depend', 'num', 'tag', 'iterator', 'group']
+        default_eq_options = ['equation', 'condition']
+        default_settings_options = ['float_isclose', 'numba']
+        # The list below contains the numpy functions which are supported.
+        # Other functions may be added at the user's own risk
+        self.supported_numpy_functions = ['log', 'exp', 'max', 'fmax', 'min', 'fmin', 'sum', 'mean', 'std', 'random.randint',
+                                     'random.uniform', 'random.normal', 'random.permutation', 'ones', 'zeros', 'floor', 'ceil', 'prod',
+                                     'arange', 'concatenate', 'nansum','isnan', 'isinf', 'round', 'size', 'shape', 'int_', 'nan', 'argsort',
+                                     'reshape', 'operator.__lt__', 'operator.__gt__', 'logical_not',
+                                     'dtype', 'int64', 'abs', 'inf', 'amin']
 
-            self.supported_numpy_arguments = ['initial']
+        self.supported_numpy_arguments = ['initial']
 
-            #Alternatively, functions unsupported by Numba can be included in the following class
-            self.numba_func = self.numba_functions()
+        #Alternatively, functions unsupported by Numba can be included in the following class
+        self.numba_func = self.numba_functions()
 
-            self.supported_statements = ['while', 'for', 'if', 'break', 'quit']
+        self.supported_statements = ['while', 'for', 'if', 'break', 'quit']
 
-            self.hard_coded_names = ['iterations', 't']
+        self.hard_coded_names = ['iterations', 't']
 
-            with open(self.modfile, 'r') as f:
-                mod = f.readlines()
+        with open(self.modfile, 'r') as f:
+            mod = f.readlines()
 
-            # Remove comments, newlines, and whitespace from mod file
-            mod = [re.sub('//.*|\\n| ', '', l) for l in mod]
-            # Remove empty lines from mod file
-            mod = [l for l in mod if (len(l) > 0 and not(l.isspace()))]
+        # Remove comments, newlines, and whitespace from mod file
+        mod = [re.sub('//.*|\\n| ', '', l) for l in mod]
+        # Remove empty lines from mod file
+        mod = [l for l in mod if (len(l) > 0 and not(l.isspace()))]
 
-            # Get included blocks
-            included_blocks = [b for b in mod if b in block_list_arguments]
-            # Get order of blocks in mod
-            block_order = [mod.index(b) for b in included_blocks]
-            # Sort included blocks by appearance
-            included_blocks = [x for y, x in sorted(zip(block_order, included_blocks))]
-            # Get index of semi-colons
-            semi_colons_mod = [l for l in range(len(mod)) if mod[l] == ';']
+        # Get included blocks
+        included_blocks = [b for b in mod if b in block_list_arguments]
+        # Get order of blocks in mod
+        block_order = [mod.index(b) for b in included_blocks]
+        # Sort included blocks by appearance
+        included_blocks = [x for y, x in sorted(zip(block_order, included_blocks))]
+        # Get index of semi-colons
+        semi_colons_mod = [l for l in range(len(mod)) if mod[l] == ';']
 
-            # Sanity checks
-            if 'AGENTS' not in included_blocks:
-                raise ValueError('Agents need to be declared')
-            if len(list(set(included_blocks))) != len(included_blocks):
-                for b in list(set(included_blocks)):
-                    included_blocks.remove(b)
-                for b in included_blocks:
-                    raise ValueError(b+' was already declared')
-            if len(included_blocks) > len(semi_colons_mod):
-                raise ValueError('Syntax Error: There are more declared blocks than semi-colons')
-            if len(included_blocks) < len(semi_colons_mod):
-                raise ValueError('Syntax Error: There are more semi-colons than declared blocks')
-
-            # Get blocks
-            self.blocks = {}
-            for i, b in enumerate(included_blocks):
-                self.blocks[b] = mod[mod.index(included_blocks[i])+1:semi_colons_mod[i]]
-
-            # Order blocks back into order needed to compile
-            included_blocks = [b for b in block_list_arguments if b in included_blocks]
-
-            # Iterate through blocks to build modfile dictionary "self.blocks".
-            # This dictionary will contain all the elements needed to compile the model.
+        # Sanity checks
+        if 'AGENTS' not in included_blocks:
+            raise ValueError('Agents need to be declared')
+        if len(list(set(included_blocks))) != len(included_blocks):
+            for b in list(set(included_blocks)):
+                included_blocks.remove(b)
             for b in included_blocks:
-                if b == 'SETTINGS':
-                    unparsed_settings = self.blocks[b]
-                    parsed_settings = {}
-                    for option in default_settings_options:
-                        if option == 'float_isclose':
-                            parsed_settings['float_isclose'] = '0'
-                        if option == 'numba':
-                            parsed_settings['numba'] = 'False'
-                    for option in unparsed_settings:
-                        option_split = option.split('=')
-                        if len(option_split) != 2:
-                            raise ValueError('Syntax Error: Malformed setting \"'+option+'\"')
-                        if option_split[0] not in default_settings_options:
-                            raise ValueError('Syntax Error: Setting \"'+option_split[0]+'\" is not recognized')
-                        setting = option_split[0]
-                        val = option_split[1]
-                        parsed_settings[setting] = val
-                    #Check that values are valid for settings
-                    if parsed_settings['numba'] != 'True' and parsed_settings['numba']!= 'False':
-                        raise ValueError('Syntax Error: Numba setting can only take True or False, current setting: '+parsed_settings['numba'])
+                raise ValueError(b+' was already declared')
+        if len(included_blocks) > len(semi_colons_mod):
+            raise ValueError('Syntax Error: There are more declared blocks than semi-colons')
+        if len(included_blocks) < len(semi_colons_mod):
+            raise ValueError('Syntax Error: There are more semi-colons than declared blocks')
 
-                    self.blocks[b] = parsed_settings
+        # Get blocks
+        self.blocks = {}
+        for i, b in enumerate(included_blocks):
+            self.blocks[b] = mod[mod.index(included_blocks[i])+1:semi_colons_mod[i]]
 
-                elif b == 'AGENTS':
-                    unparsed_agents = self.blocks[b]
-                    parsed_agents = {}
-                    for agent in unparsed_agents:
-                        agent_split = agent.split('=', 1)
-                        name = agent_split[0]
-                        agent_options = {}
-                        for options in default_agent_options:
-                            if options=='iterator' or options=='group':
-                                agent_options[options] = []
-                            else:
-                                agent_options[options] = ''
-                        options = [o.group() for o in re.finditer('\w+=(\w+[,|\]])+', agent_split[1])]
-                        for opt in options:
-                            option = opt.split('=')
-                            option_val = option[1][:-1].split(',')
-                            if option[0]!='iterator' and option[0]!='group':
-                                agent_options[option[0]] = option_val[0]
-                            else:
-                                agent_options[option[0]] = option_val
-                        parsed_agents[name] = agent_options
+        # Order blocks back into order needed to compile
+        included_blocks = [b for b in block_list_arguments if b in included_blocks]
 
-                    self.blocks[b] = parsed_agents
-                    # Make list of all tags for following sanity checks
-                    self.model_A_TAGS = []
-                    for a in list(parsed_agents.keys()):
-                        self.model_A_TAGS.append(parsed_agents[a]['tag'])
+        # Iterate through blocks to build modfile dictionary "self.blocks".
+        # This dictionary will contain all the elements needed to compile the model.
+        for b in included_blocks:
+            if b == 'SETTINGS':
+                unparsed_settings = self.blocks[b]
+                parsed_settings = {}
+                for option in default_settings_options:
+                    if option == 'float_isclose':
+                        parsed_settings['float_isclose'] = '0'
+                    if option == 'numba':
+                        parsed_settings['numba'] = 'False'
+                for option in unparsed_settings:
+                    option_split = option.split('=')
+                    if len(option_split) != 2:
+                        raise ValueError('Syntax Error: Malformed setting \"'+option+'\"')
+                    if option_split[0] not in default_settings_options:
+                        raise ValueError('Syntax Error: Setting \"'+option_split[0]+'\" is not recognized')
+                    setting = option_split[0]
+                    val = option_split[1]
+                    parsed_settings[setting] = val
+                #Check that values are valid for settings
+                if parsed_settings['numba'] != 'True' and parsed_settings['numba']!= 'False':
+                    raise ValueError('Syntax Error: Numba setting can only take True or False, current setting: '+parsed_settings['numba'])
 
-                    # Make list of all iterators for following sanity checks
-                    self.model_A_ITERATOR = []
-                    for a in list(parsed_agents.keys()):
-                        self.model_A_ITERATOR = self.model_A_ITERATOR + parsed_agents[a]['iterator']
+                self.blocks[b] = parsed_settings
 
-                    # Make list of all tags for following sanity checks
-                    self.model_A_GROUPS = []
-                    for a in list(parsed_agents.keys()):
-                        self.model_A_GROUPS = self.model_A_GROUPS + parsed_agents[a]['group']
-
-                elif b == 'ENDO_VAR':
-                    unparsed_ENDO_VAR = self.blocks[b]
-                    parsed_ENDO_VAR = {}
-                    agents = list(self.blocks['AGENTS'].keys())
-                    # Get agents in ENDO_VAR
-                    agent_ENDO_VAR = [a for a in unparsed_ENDO_VAR if a in agents]
-
-                    # Sanity check
-                    if len(agent_ENDO_VAR) != len(agents):
-                        raise ValueError('Mismatch between number of agents declared and ENDO_VAR')
-                    if len(list(set(unparsed_ENDO_VAR))) != len(unparsed_ENDO_VAR):
-                        for b in list(set(unparsed_ENDO_VAR)):
-                            unparsed_ENDO_VAR.remove(b)
-                        for b in unparsed_ENDO_VAR:
-                            raise ValueError('Variable ' + b + ' is declared multiple times in ENDO_VAR')
-
-                    # Get order of agents in ENDO_VAR
-                    agent_order = [unparsed_ENDO_VAR.index(a) for a in agents]
-                    # Sort agents in ENDO_VAR by appearance
-                    agents = [x for y, x in sorted(zip(agent_order, agents))]
-
-                    for a in reversed(agents):
-                        parsed_ENDO_VAR[a] = unparsed_ENDO_VAR[unparsed_ENDO_VAR.index(a)+1:]
-                        unparsed_ENDO_VAR = unparsed_ENDO_VAR[:unparsed_ENDO_VAR.index(a)]
-
-                    # Make list of all vars for following sanity checks
-                    self.model_ENDO_VARS = []
-                    for a in list(parsed_ENDO_VAR.keys()):
-                        self.model_ENDO_VARS = self.model_ENDO_VARS + parsed_ENDO_VAR[a]
-                    self.blocks[b] = parsed_ENDO_VAR
-
-                elif b == 'ENDO_MAT':
-                    unparsed_ENDO_MAT = self.blocks[b]
-                    parsed_ENDO_MAT = {}
-
-                    for m in unparsed_ENDO_MAT:
-                        m_orig = m
-                        m = m.split('=')
-                        if len(m) != 2:
-                            raise ValueError('Syntax Error: '+str(m_orig))
-                        reg_expression = '\+|-|\*|\/|@|\(|\)|\]|\[|:|<|>|=|!|\.T| |\\\\'
-                        m_raw = re.sub(reg_expression, ',', m[1])
-                        m_raw = m_raw.split(',')
-                        m_raw = [term for term in m_raw if term != '']
-                        m_tags = [term for term in m_raw if term in self.model_A_TAGS]
-                        m_iterator = []
-                        for m_tag in m_tags:
-                            for a in list(self.blocks['AGENTS'].keys()):
-                                if self.blocks['AGENTS'][a]['tag'] == m_tag:
-                                    m_iterator.append(self.blocks['AGENTS'][a]['iterator'][0])
-                        m_dict = {}
-                        m_dict['eq'] = m[1]
-                        m_dict['tags'] = m_iterator
-                        parsed_ENDO_MAT[m[0]] = m_dict
-
-                    # Sanity check
-                    if len(list(set(parsed_ENDO_MAT.keys()))) != len(parsed_ENDO_MAT.keys()):
-                        for b in list(set(unparsed_ENDO_MAT)):
-                            unparsed_ENDO_MAT.remove(b)
-                        for b in unparsed_ENDO_MAT:
-                            raise ValueError('Matrix ' + b + ' is declared multiple times in ENDO_MAT')
-
-                    # Make list of all vars for following sanity checks
-                    self.model_ENDO_MAT = list(parsed_ENDO_MAT.keys())
-
-                    self.blocks[b] = parsed_ENDO_MAT
-
-                elif b == 'ENDO_INIT':
-                    unparsed_ENDO_INIT = self.blocks[b]
-                    parsed_ENDO_INIT = {}
-                    for i in unparsed_ENDO_INIT:
-                        i_orig = i
-                        i = i.split('=')
-                        if len(i) != 2:
-                            raise ValueError('Syntax Error: '+str(i_orig))
-                        parsed_ENDO_INIT[i[0]] = i[1]
-                    self.blocks[b] = parsed_ENDO_INIT
-
-                elif b == 'EXO_PARAM':
-                    unparsed_EXO_PARAM = self.blocks[b]
-                    parsed_EXO_PARAM = {}
-                    for p in unparsed_EXO_PARAM:
-                        p_orig = p
-                        p = p.split('=')
-                        if len(p) != 2:
-                            raise ValueError('Syntax Error: '+str(p_orig))
-                        parsed_EXO_PARAM[p[0]] = p[1]
-
-                    # Make list of all exo param for following sanity checks
-                    self.model_EXO_PARAM = list(parsed_EXO_PARAM.keys())
-                    self.blocks[b] = parsed_EXO_PARAM
-
-                elif b == 'MAT_TYPE':
-                    unparsed_MAT_TYPE = self.blocks[b]
-                    parsed_MAT_TYPE = {}
-                    for type in unparsed_MAT_TYPE:
-                        type_orig = type
-                        type = type.split('=')
-                        if len(type) != 2:
-                            raise ValueError('Syntax Error: '+str(type_orig))
-                        parsed_MAT_TYPE[type[0]] = type[1]
-                    self.model_MAT_TYPE = list(parsed_MAT_TYPE.keys())
-                    self.blocks[b] = parsed_MAT_TYPE
-
-                    #Sanity check
-                    #Check that variable whose type is assigned in ENDO_TYPE is also declared in EXO_PARAM
-                    for var in self.model_MAT_TYPE:
-                        if var not in self.model_ENDO_MAT:
-                            raise ValueError('Syntax Error: Var \"'+var+'\" is assigned type in MAT_TYPE but is not declared in ENDO_MAT')
-
-                elif b == 'ENDO_EQ':
-                    unparsed_ENDO_EQ = self.blocks[b]
-                    parsed_ENDO_EQ = {}
-                    # Sanity check
-                    flag = 0
-                    for eq in unparsed_ENDO_EQ:
-                        if flag == 0:
-                            if re.match('^\[.*\]$', eq):
-                                pass
-                            else:
-                                raise ValueError('Syntax Error: '+eq)
+            elif b == 'AGENTS':
+                unparsed_agents = self.blocks[b]
+                parsed_agents = {}
+                for agent in unparsed_agents:
+                    agent_split = agent.split('=', 1)
+                    name = agent_split[0]
+                    agent_options = {}
+                    for options in default_agent_options:
+                        if options=='iterator' or options=='group':
+                            agent_options[options] = []
                         else:
-                            if re.match('^[^=]*=.*$', eq):
-                                pass
-                            else:
-                                raise ValueError('Syntax Error: '+eq)
-                        flag = (flag + 1) % 2
-                    ENDO_EQ_names = []
-                    flag = 0
-                    for eq in unparsed_ENDO_EQ:
-                        if flag == 0:
-                            equation = {}
-                            for option in default_eq_options:
-                                equation[option] = ''
-                            option_split = re.sub('^\[|\]$| ', '', eq)
-                            option_split_no_parenthesis = option_split
-                            if option_split.count('(') != option_split.count(')'):
-                                raise ValueError('Syntax Error: Invalid parenthesis in ' + eq)
-                            if option_split.count('[') != option_split.count(']'):
-                                raise ValueError('Syntax Error: Invalid brackets in ' + eq)
-                            while '(' in option_split_no_parenthesis or ')' in option_split_no_parenthesis:
-                                option_split_no_parenthesis = re.sub('\([^\(\)]*\)', repl, option_split_no_parenthesis)
-                            #while '[' in option_split_no_parenthesis or ']' in option_split_no_parenthesis:
-                            #    option_split_no_parenthesis = re.sub('\[[^\[\]]*\]', repl, option_split_no_parenthesis)
-                            option_split_idx = [c for c in range(len(option_split_no_parenthesis)) if option_split_no_parenthesis[c] == ',']
-                            option_split = [opt for opt in split_by_idx(option_split, option_split_idx)]
-
-                            for option in option_split:
-                                opt = option.split('=', 1)
-                                if opt[0] == 'condition':
-                                    if equation[opt[0]] != '':
-                                        raise ValueError('Syntax Error: equation \"'+eq+'\" has more than one condition')
-                                    equation[opt[0]] = opt[1]
-                                else:
-                                    if opt[0] == 'name':
-                                        name = opt[1]
-                                    else:
-                                        equation[opt[0]] = opt[1]
+                            agent_options[options] = ''
+                    options = [o.group() for o in re.finditer('\w+=(\w+[,|\]])+', agent_split[1])]
+                    for opt in options:
+                        option = opt.split('=')
+                        option_val = option[1][:-1].split(',')
+                        if option[0]!='iterator' and option[0]!='group':
+                            agent_options[option[0]] = option_val[0]
                         else:
-                            equation['equation'] = eq
-                            if name in ENDO_EQ_names:
-                                raise ValueError('Another equation with name '+name+' was declared')
-                            else:
-                                parsed_ENDO_EQ[name] = equation
-                            ENDO_EQ_names.append(name)
+                            agent_options[option[0]] = option_val
+                    parsed_agents[name] = agent_options
 
-                        flag = (flag + 1) % 2
+                self.blocks[b] = parsed_agents
+                # Make list of all tags for following sanity checks
+                self.model_A_TAGS = []
+                for a in list(parsed_agents.keys()):
+                    self.model_A_TAGS.append(parsed_agents[a]['tag'])
 
-                    # Sanity check
-                    # Check that all endogenous variables have an equation, otherwise throw a warning
-                    eq_vars = [parsed_ENDO_EQ[eq_var]['equation'].split('=')[0] for eq_var in list(parsed_ENDO_EQ.keys())]
-                    for var in self.model_ENDO_VARS:
-                        if var not in eq_vars:
-                            print('Warning: Endogenous variable '+var+' does not have an equation')
+                # Make list of all iterators for following sanity checks
+                self.model_A_ITERATOR = []
+                for a in list(parsed_agents.keys()):
+                    self.model_A_ITERATOR = self.model_A_ITERATOR + parsed_agents[a]['iterator']
 
-                    # Check that the variable in the equation was declared
-                    for var in eq_vars:
-                        if re.sub( '\[.*\]', '', var) not in self.model_ENDO_VARS+self.model_ENDO_MAT+self.model_EXO_PARAM+self.model_A_ITERATOR+self.model_A_GROUPS:
-                            raise ValueError('Variable '+var+' is not declared in ENDO_VARS, ENDO_MAT, EXO_PARAM, as an Iterator, or as a Group')
+                # Make list of all tags for following sanity checks
+                self.model_A_GROUPS = []
+                for a in list(parsed_agents.keys()):
+                    self.model_A_GROUPS = self.model_A_GROUPS + parsed_agents[a]['group']
 
-                    # Check that the number of parenthesis is consistent
-                    model_equations = [parsed_ENDO_EQ[eq_var]['equation'] for eq_var in list(parsed_ENDO_EQ.keys())]
-                    for eq in model_equations:
-                        if eq.count('(') != eq.count(')'):
-                            raise ValueError('Syntax Error: Invalid parenthesis in ' + eq)
-                        if eq.count('[') != eq.count(']'):
-                            raise ValueError('Syntax Error: Invalid brackets in ' + eq)
+            elif b == 'ENDO_VAR':
+                unparsed_ENDO_VAR = self.blocks[b]
+                parsed_ENDO_VAR = {}
+                agents = list(self.blocks['AGENTS'].keys())
+                # Get agents in ENDO_VAR
+                agent_ENDO_VAR = [a for a in unparsed_ENDO_VAR if a in agents]
 
-                    # Check that variables and functions inside equation were respectively declared or are supported
+                # Sanity check
+                if len(agent_ENDO_VAR) != len(agents):
+                    raise ValueError('Mismatch between number of agents declared and ENDO_VAR')
+                if len(list(set(unparsed_ENDO_VAR))) != len(unparsed_ENDO_VAR):
+                    for b in list(set(unparsed_ENDO_VAR)):
+                        unparsed_ENDO_VAR.remove(b)
+                    for b in unparsed_ENDO_VAR:
+                        raise ValueError('Variable ' + b + ' is declared multiple times in ENDO_VAR')
+
+                # Get order of agents in ENDO_VAR
+                agent_order = [unparsed_ENDO_VAR.index(a) for a in agents]
+                # Sort agents in ENDO_VAR by appearance
+                agents = [x for y, x in sorted(zip(agent_order, agents))]
+
+                for a in reversed(agents):
+                    parsed_ENDO_VAR[a] = unparsed_ENDO_VAR[unparsed_ENDO_VAR.index(a)+1:]
+                    unparsed_ENDO_VAR = unparsed_ENDO_VAR[:unparsed_ENDO_VAR.index(a)]
+
+                # Make list of all vars for following sanity checks
+                self.model_ENDO_VARS = []
+                for a in list(parsed_ENDO_VAR.keys()):
+                    self.model_ENDO_VARS = self.model_ENDO_VARS + parsed_ENDO_VAR[a]
+                self.blocks[b] = parsed_ENDO_VAR
+
+            elif b == 'ENDO_MAT':
+                unparsed_ENDO_MAT = self.blocks[b]
+                parsed_ENDO_MAT = {}
+
+                for m in unparsed_ENDO_MAT:
+                    m_orig = m
+                    m = m.split('=')
+                    if len(m) != 2:
+                        raise ValueError('Syntax Error: '+str(m_orig))
                     reg_expression = '\+|-|\*|\/|@|\(|\)|\]|\[|:|<|>|=|!|\.T| |\\\\'
-                    model_equations_raw = [re.sub(reg_expression, ',', eq) for eq in model_equations]
-                    model_equations_raw = [eq.split(',') for eq in model_equations_raw]
-                    model_equations_raw = [[term for term in eq if term != ''] for eq in model_equations_raw]
-                    for eq in model_equations_raw:
-                        for term in eq:
-                            if term in self.model_ENDO_VARS+self.model_ENDO_MAT+self.model_EXO_PARAM+self.model_A_ITERATOR+self.model_A_GROUPS+self.model_A_TAGS+self.hard_coded_names:
-                                continue
-                            elif term in self.supported_numpy_functions+self.supported_numpy_arguments:
-                                continue
-                            elif re.sub('[.]', '', term).isdigit():
-                                continue
+                    m_raw = re.sub(reg_expression, ',', m[1])
+                    m_raw = m_raw.split(',')
+                    m_raw = [term for term in m_raw if term != '']
+                    m_tags = [term for term in m_raw if term in self.model_A_TAGS]
+                    m_iterator = []
+                    for m_tag in m_tags:
+                        for a in list(self.blocks['AGENTS'].keys()):
+                            if self.blocks['AGENTS'][a]['tag'] == m_tag:
+                                m_iterator.append(self.blocks['AGENTS'][a]['iterator'][0])
+                    m_dict = {}
+                    m_dict['eq'] = m[1]
+                    m_dict['tags'] = m_iterator
+                    parsed_ENDO_MAT[m[0]] = m_dict
+
+                # Sanity check
+                if len(list(set(parsed_ENDO_MAT.keys()))) != len(parsed_ENDO_MAT.keys()):
+                    for b in list(set(unparsed_ENDO_MAT)):
+                        unparsed_ENDO_MAT.remove(b)
+                    for b in unparsed_ENDO_MAT:
+                        raise ValueError('Matrix ' + b + ' is declared multiple times in ENDO_MAT')
+
+                # Make list of all vars for following sanity checks
+                self.model_ENDO_MAT = list(parsed_ENDO_MAT.keys())
+
+                self.blocks[b] = parsed_ENDO_MAT
+
+            elif b == 'ENDO_INIT':
+                unparsed_ENDO_INIT = self.blocks[b]
+                parsed_ENDO_INIT = {}
+                for i in unparsed_ENDO_INIT:
+                    i_orig = i
+                    i = i.split('=')
+                    if len(i) != 2:
+                        raise ValueError('Syntax Error: '+str(i_orig))
+                    parsed_ENDO_INIT[i[0]] = i[1]
+                self.blocks[b] = parsed_ENDO_INIT
+
+            elif b == 'EXO_PARAM':
+                unparsed_EXO_PARAM = self.blocks[b]
+                parsed_EXO_PARAM = {}
+                for p in unparsed_EXO_PARAM:
+                    p_orig = p
+                    p = p.split('=')
+                    if len(p) != 2:
+                        raise ValueError('Syntax Error: '+str(p_orig))
+                    parsed_EXO_PARAM[p[0]] = p[1]
+
+                # Make list of all exo param for following sanity checks
+                self.model_EXO_PARAM = list(parsed_EXO_PARAM.keys())
+                self.blocks[b] = parsed_EXO_PARAM
+
+            elif b == 'MAT_TYPE':
+                unparsed_MAT_TYPE = self.blocks[b]
+                parsed_MAT_TYPE = {}
+                for type in unparsed_MAT_TYPE:
+                    type_orig = type
+                    type = type.split('=')
+                    if len(type) != 2:
+                        raise ValueError('Syntax Error: '+str(type_orig))
+                    parsed_MAT_TYPE[type[0]] = type[1]
+                self.model_MAT_TYPE = list(parsed_MAT_TYPE.keys())
+                self.blocks[b] = parsed_MAT_TYPE
+
+                #Sanity check
+                #Check that variable whose type is assigned in ENDO_TYPE is also declared in EXO_PARAM
+                for var in self.model_MAT_TYPE:
+                    if var not in self.model_ENDO_MAT:
+                        raise ValueError('Syntax Error: Var \"'+var+'\" is assigned type in MAT_TYPE but is not declared in ENDO_MAT')
+
+            elif b == 'ENDO_EQ':
+                unparsed_ENDO_EQ = self.blocks[b]
+                parsed_ENDO_EQ = {}
+                # Sanity check
+                flag = 0
+                for eq in unparsed_ENDO_EQ:
+                    if flag == 0:
+                        if re.match('^\[.*\]$', eq):
+                            pass
+                        else:
+                            raise ValueError('Syntax Error: '+eq)
+                    else:
+                        if re.match('^[^=]*=.*$', eq):
+                            pass
+                        else:
+                            raise ValueError('Syntax Error: '+eq)
+                    flag = (flag + 1) % 2
+                ENDO_EQ_names = []
+                flag = 0
+                for eq in unparsed_ENDO_EQ:
+                    if flag == 0:
+                        equation = {}
+                        for option in default_eq_options:
+                            equation[option] = ''
+                        option_split = re.sub('^\[|\]$| ', '', eq)
+                        option_split_no_parenthesis = option_split
+                        if option_split.count('(') != option_split.count(')'):
+                            raise ValueError('Syntax Error: Invalid parenthesis in ' + eq)
+                        if option_split.count('[') != option_split.count(']'):
+                            raise ValueError('Syntax Error: Invalid brackets in ' + eq)
+                        while '(' in option_split_no_parenthesis or ')' in option_split_no_parenthesis:
+                            option_split_no_parenthesis = re.sub('\([^\(\)]*\)', repl, option_split_no_parenthesis)
+                        #while '[' in option_split_no_parenthesis or ']' in option_split_no_parenthesis:
+                        #    option_split_no_parenthesis = re.sub('\[[^\[\]]*\]', repl, option_split_no_parenthesis)
+                        option_split_idx = [c for c in range(len(option_split_no_parenthesis)) if option_split_no_parenthesis[c] == ',']
+                        option_split = [opt for opt in split_by_idx(option_split, option_split_idx)]
+
+                        for option in option_split:
+                            opt = option.split('=', 1)
+                            if opt[0] == 'condition':
+                                if equation[opt[0]] != '':
+                                    raise ValueError('Syntax Error: equation \"'+eq+'\" has more than one condition')
+                                equation[opt[0]] = opt[1]
                             else:
-                                raise ValueError('Variable or function \"'+term+'\" is not declared or is not supported')
-                    self.blocks[b] = parsed_ENDO_EQ
+                                if opt[0] == 'name':
+                                    name = opt[1]
+                                else:
+                                    equation[opt[0]] = opt[1]
+                    else:
+                        equation['equation'] = eq
+                        if name in ENDO_EQ_names:
+                            raise ValueError('Another equation with name '+name+' was declared')
+                        else:
+                            parsed_ENDO_EQ[name] = equation
+                        ENDO_EQ_names.append(name)
 
-                    # Make list of all equation names for following sanity checks
-                    self.model_EQ_NAMES = list(self.blocks[b].keys())
+                    flag = (flag + 1) % 2
 
-                    # Check that none of the equation names are the same as the supported statements or numpy functions
-                    for eq_name in self.model_EQ_NAMES:
-                        if eq_name in self.supported_numpy_functions + self.supported_numpy_arguments + self.supported_statements + self.hard_coded_names:
-                            raise ValueError('Syntax Error: equation name \"'+eq_name+'\" is not allowed, please check supported functions, arguments, and hard coded names')
+                # Sanity check
+                # Check that all endogenous variables have an equation, otherwise throw a warning
+                eq_vars = [parsed_ENDO_EQ[eq_var]['equation'].split('=')[0] for eq_var in list(parsed_ENDO_EQ.keys())]
+                for var in self.model_ENDO_VARS:
+                    if var not in eq_vars:
+                        print('Warning: Endogenous variable '+var+' does not have an equation')
 
-                    # Check that none of the equation names contain [ or ]
-                    for eq_name in self.model_EQ_NAMES:
-                        if '[' in eq_name:
-                            raise ValueError('Syntax Error: Invalid character [ in name \"'+eq_name+'\"')
-                        if ']' in eq_name:
-                            raise ValueError('Syntax Error: Invalid character ] in name \"'+eq_name+'\"')
+                # Check that the variable in the equation was declared
+                for var in eq_vars:
+                    if re.sub( '\[.*\]', '', var) not in self.model_ENDO_VARS+self.model_ENDO_MAT+self.model_EXO_PARAM+self.model_A_ITERATOR+self.model_A_GROUPS:
+                        raise ValueError('Variable '+var+' is not declared in ENDO_VARS, ENDO_MAT, EXO_PARAM, as an Iterator, or as a Group')
 
-                elif b == 'STEPS':
-                    # Sanity checks
-                    # Check that all equations in STEPS are declared
-                    eq_in_STEPS = []
-                    for eq_name in self.blocks['STEPS']:
-                        eq_name = re.sub('\[.*\]', '', eq_name)
-                        if eq_name in self.model_EQ_NAMES:
-                            eq_in_STEPS.append(eq_name)
+                # Check that the number of parenthesis is consistent
+                model_equations = [parsed_ENDO_EQ[eq_var]['equation'] for eq_var in list(parsed_ENDO_EQ.keys())]
+                for eq in model_equations:
+                    if eq.count('(') != eq.count(')'):
+                        raise ValueError('Syntax Error: Invalid parenthesis in ' + eq)
+                    if eq.count('[') != eq.count(']'):
+                        raise ValueError('Syntax Error: Invalid brackets in ' + eq)
+
+                # Check that variables and functions inside equation were respectively declared or are supported
+                reg_expression = '\+|-|\*|\/|@|\(|\)|\]|\[|:|<|>|=|!|\.T| |\\\\'
+                model_equations_raw = [re.sub(reg_expression, ',', eq) for eq in model_equations]
+                model_equations_raw = [eq.split(',') for eq in model_equations_raw]
+                model_equations_raw = [[term for term in eq if term != ''] for eq in model_equations_raw]
+                for eq in model_equations_raw:
+                    for term in eq:
+                        if term in self.model_ENDO_VARS+self.model_ENDO_MAT+self.model_EXO_PARAM+self.model_A_ITERATOR+self.model_A_GROUPS+self.model_A_TAGS+self.hard_coded_names:
+                            continue
+                        elif term in self.supported_numpy_functions+self.supported_numpy_arguments:
+                            continue
+                        elif re.sub('[.]', '', term).isdigit():
                             continue
                         else:
-                            check_statements = 0
-                            for statement in self.supported_statements:
-                                if re.match('^'+statement+'\(.*\){$', eq_name):
-                                    check_statements = 1
-                            if check_statements == 0 and eq_name != '}' and eq_name not in self.supported_statements:
-                                raise ValueError('Equation ' + eq_name + ' in STEPS is not declared in ENDO_EQ')
-                            continue
+                            raise ValueError('Variable or function \"'+term+'\" is not declared or is not supported')
+                self.blocks[b] = parsed_ENDO_EQ
 
-                    # Warn if a declared equation does not appear in STEPS
-                    for eq_name in self.model_EQ_NAMES:
-                        if eq_name not in eq_in_STEPS:
-                            print('Warning: Equation \"'+eq_name+'\" is not included in the STEPS')
+                # Make list of all equation names for following sanity checks
+                self.model_EQ_NAMES = list(self.blocks[b].keys())
 
-                    # Check that all conditions in while and for loops are correctly specified
-                    for eq_name in self.blocks['STEPS']:
+                # Check that none of the equation names are the same as the supported statements or numpy functions
+                for eq_name in self.model_EQ_NAMES:
+                    if eq_name in self.supported_numpy_functions + self.supported_numpy_arguments + self.supported_statements + self.hard_coded_names:
+                        raise ValueError('Syntax Error: equation name \"'+eq_name+'\" is not allowed, please check supported functions, arguments, and hard coded names')
+
+                # Check that none of the equation names contain [ or ]
+                for eq_name in self.model_EQ_NAMES:
+                    if '[' in eq_name:
+                        raise ValueError('Syntax Error: Invalid character [ in name \"'+eq_name+'\"')
+                    if ']' in eq_name:
+                        raise ValueError('Syntax Error: Invalid character ] in name \"'+eq_name+'\"')
+
+            elif b == 'STEPS':
+                # Sanity checks
+                # Check that all equations in STEPS are declared
+                eq_in_STEPS = []
+                for eq_name in self.blocks['STEPS']:
+                    eq_name = re.sub('\[.*\]', '', eq_name)
+                    if eq_name in self.model_EQ_NAMES:
+                        eq_in_STEPS.append(eq_name)
+                        continue
+                    else:
+                        check_statements = 0
                         for statement in self.supported_statements:
-                            if statement in eq_name:
-                                if re.match('^' + statement + '\(.+\){$', eq_name):
-                                    if statement == 'for':
-                                        try:
-                                            condition = re.search('\([^\(\),]*,[^\(\),]*\)', eq_name).group(0)
-                                        except:
-                                            raise ValueError('Syntax Error: \"' + eq_name + '\"')
-                                        condition = re.sub('\(|\)', '', condition)
-                                        condition = condition.split(',')
-                                        for c in condition:
-                                            if c in self.model_ENDO_VARS+self.model_ENDO_MAT+self.model_EXO_PARAM+self.model_A_ITERATOR+self.model_A_GROUPS+self.model_A_TAGS+self.hard_coded_names:
-                                                continue
-                                            else:
-                                                raise ValueError('Variable \"'+c+'\" in statement \"'+eq_name+'\" is not declared')
-                                    #elif statement == 'while' or statement == 'if':
-                                    #    condition = re.search('\(.*\)', eq_name).group(0)[1:-1]
-                                    #    condition = re.split('&&|\|\|', condition)
-                                    #    for c in condition:
-                                    #        if c.count('(') != c.count(')'):
-                                    #            raise ValueError('Syntax Error: Parenthesis mismatch in condition \"'+c+'\" of statement \"'+eq_name+'\"')
-                                    #        if c.count('[') != c.count(']'):
-                                    #           raise ValueError('Syntax Error: Bracket mismatch in condition \"'+c+'\" of statement \"'+eq_name+'\"')
-                                elif statement == 'break':
-                                    continue
-                                elif statement == 'quit':
-                                    continue
-                                else:
-                                    raise ValueError('Syntax Error: Malformed statement \"'+eq_name+'\"')
-                else:
-                    raise ValueError('Block class \"'+b+'\" not recognized')
-            # Finished parsing mod file
+                            if re.match('^'+statement+'\(.*\){$', eq_name):
+                                check_statements = 1
+                        if check_statements == 0 and eq_name != '}' and eq_name not in self.supported_statements:
+                            raise ValueError('Equation ' + eq_name + ' in STEPS is not declared in ENDO_EQ')
+                        continue
 
-            compiled_file = []
+                # Warn if a declared equation does not appear in STEPS
+                for eq_name in self.model_EQ_NAMES:
+                    if eq_name not in eq_in_STEPS:
+                        print('Warning: Equation \"'+eq_name+'\" is not included in the STEPS')
 
-            # Import libraries
-            compiled_file.append('import numpy as np\n')
-            compiled_file.append('from numba import njit\n')
+                # Check that all conditions in while and for loops are correctly specified
+                for eq_name in self.blocks['STEPS']:
+                    for statement in self.supported_statements:
+                        if statement in eq_name:
+                            if re.match('^' + statement + '\(.+\){$', eq_name):
+                                if statement == 'for':
+                                    try:
+                                        condition = re.search('\([^\(\),]*,[^\(\),]*\)', eq_name).group(0)
+                                    except:
+                                        raise ValueError('Syntax Error: \"' + eq_name + '\"')
+                                    condition = re.sub('\(|\)', '', condition)
+                                    condition = condition.split(',')
+                                    for c in condition:
+                                        if c in self.model_ENDO_VARS+self.model_ENDO_MAT+self.model_EXO_PARAM+self.model_A_ITERATOR+self.model_A_GROUPS+self.model_A_TAGS+self.hard_coded_names:
+                                            continue
+                                        else:
+                                            raise ValueError('Variable \"'+c+'\" in statement \"'+eq_name+'\" is not declared')
+                                #elif statement == 'while' or statement == 'if':
+                                #    condition = re.search('\(.*\)', eq_name).group(0)[1:-1]
+                                #    condition = re.split('&&|\|\|', condition)
+                                #    for c in condition:
+                                #        if c.count('(') != c.count(')'):
+                                #            raise ValueError('Syntax Error: Parenthesis mismatch in condition \"'+c+'\" of statement \"'+eq_name+'\"')
+                                #        if c.count('[') != c.count(']'):
+                                #           raise ValueError('Syntax Error: Bracket mismatch in condition \"'+c+'\" of statement \"'+eq_name+'\"')
+                            elif statement == 'break':
+                                continue
+                            elif statement == 'quit':
+                                continue
+                            else:
+                                raise ValueError('Syntax Error: Malformed statement \"'+eq_name+'\"')
+            else:
+                raise ValueError('Block class \"'+b+'\" not recognized')
+        # Finished parsing mod file
 
-            compiled_file.append('\n')
+        compiled_file = []
 
-            # Start writing model function
-            if self.blocks['SETTINGS']['numba'] == 'True':
-                compiled_file.append('@njit(cache = True)\n')
-            compiled_file.append('def run(iterations):\n')
+        # Import libraries
+        compiled_file.append('import numpy as np\n')
+        compiled_file.append('from numba import njit\n')
 
-            # Sort agents to make output consistent and more organized
-            sorted_agents = list(self.blocks['AGENTS'].keys())
-            sorted_agents.sort()
+        compiled_file.append('\n')
 
-            #Set settings
-            compiled_file.append('    # SET SETTINGS\n')
-            if self.blocks['SETTINGS']['float_isclose'] != '0':
-                compiled_file.append('    numpy_prec = '+self.blocks['SETTINGS']['float_isclose']+'\n')
+        # Start writing model function
+        if self.blocks['SETTINGS']['numba'] == 'True':
+            compiled_file.append('@njit(cache = True)\n')
+        compiled_file.append('def run(iterations):\n')
 
-            # Initialize database
-            compiled_file.append('    # BUILDING DATABASES\n')
-            for a in sorted_agents:
-                num = self.blocks['AGENTS'][a]['num']
-                num_var = len(self.blocks['ENDO_VAR'][a])
-                compiled_file.append('    ' + a + ' = np.zeros((iterations, '+str(num)+', '+str(num_var)+'))\n')
-            compiled_file.append('\n')
+        # Sort agents to make output consistent and more organized
+        sorted_agents = list(self.blocks['AGENTS'].keys())
+        sorted_agents.sort()
 
-            #Build reverse dictionary of endo_var, mapping the var to the agent
-            self.endo_var_agent_map = {}
-            for a in sorted_agents:
-                for var_i, var in enumerate(self.blocks['ENDO_VAR'][a]):
-                    var_map = {}
-                    var_map['AGENT'] = a
-                    var_map['INDEX'] = var_i
-                    self.endo_var_agent_map[var] = var_map
+        #Set settings
+        compiled_file.append('    # SET SETTINGS\n')
+        if self.blocks['SETTINGS']['float_isclose'] != '0':
+            compiled_file.append('    numpy_prec = '+self.blocks['SETTINGS']['float_isclose']+'\n')
 
-            # Set parameters
-            compiled_file.append('    #SETTING PARAMETERS\n')
-            # 1. Initialize tags
-            for a in sorted_agents:
-                tag = self.blocks['AGENTS'][a]['tag']
-                num = self.blocks['AGENTS'][a]['num']
-                compiled_file.append('    ' + tag + ' = ' + num + '\n')
-            # 2. Initialize iterators
-            for a in sorted_agents:
-                iterator = self.blocks['AGENTS'][a]['iterator']
-                val = 0
-                for i in iterator:
-                    compiled_file.append('    ' + i + ' = ' + str(val) + '\n')
+        # Initialize database
+        compiled_file.append('    # BUILDING DATABASES\n')
+        for a in sorted_agents:
+            num = self.blocks['AGENTS'][a]['num']
+            num_var = len(self.blocks['ENDO_VAR'][a])
+            compiled_file.append('    ' + a + ' = np.zeros((iterations, '+str(num)+', '+str(num_var)+'))\n')
+        compiled_file.append('\n')
 
-            # Sort exo_param to make output consistent and more organized
-            sorted_exo_param = list(self.blocks['EXO_PARAM'].keys())
-            sorted_exo_param.sort()
+        #Build reverse dictionary of endo_var, mapping the var to the agent
+        self.endo_var_agent_map = {}
+        for a in sorted_agents:
+            for var_i, var in enumerate(self.blocks['ENDO_VAR'][a]):
+                var_map = {}
+                var_map['AGENT'] = a
+                var_map['INDEX'] = var_i
+                self.endo_var_agent_map[var] = var_map
 
-            # 3. Initialize exogenous parameters
-            for p in sorted_exo_param:
-                val = self._get_formula(self.blocks['EXO_PARAM'][p], True, init=True)
-                compiled_file.append('    ' + p + ' = ' + str(val) + '\n')
+        # Set parameters
+        compiled_file.append('    #SETTING PARAMETERS\n')
+        # 1. Initialize tags
+        for a in sorted_agents:
+            tag = self.blocks['AGENTS'][a]['tag']
+            num = self.blocks['AGENTS'][a]['num']
+            compiled_file.append('    ' + tag + ' = ' + num + '\n')
+        # 2. Initialize iterators
+        for a in sorted_agents:
+            iterator = self.blocks['AGENTS'][a]['iterator']
+            val = 0
+            for i in iterator:
+                compiled_file.append('    ' + i + ' = ' + str(val) + '\n')
 
-            # Sort endo_mat to make output consistent and more organized
-            sorted_endo_mat = list(self.blocks['ENDO_MAT'].keys())
-            sorted_endo_mat.sort()
-            compiled_file.append('    \n')
+        # Sort exo_param to make output consistent and more organized
+        sorted_exo_param = list(self.blocks['EXO_PARAM'].keys())
+        sorted_exo_param.sort()
 
-            # 3. Initialize matrix
-            compiled_file.append('    #SETTING UP MATRIX\n')
-            for m in sorted_endo_mat:
-                val = self._get_formula(self.blocks['ENDO_MAT'][m]['eq'], True, init=True)
-                compiled_file.append('    ' + m + ' = ' + str(val) + '\n')
-            compiled_file.append('    \n')
+        # 3. Initialize exogenous parameters
+        for p in sorted_exo_param:
+            val = self._get_formula(self.blocks['EXO_PARAM'][p], True, init=True)
+            compiled_file.append('    ' + p + ' = ' + str(val) + '\n')
 
-            # 5. Set matrix types
-            compiled_file.append('    #SETTING UP MATRIX TYPE\n')
-            sorted_endo_type = list(self.blocks['MAT_TYPE'].keys())
-            sorted_endo_type.sort()
-            for endo_type in sorted_endo_type:
-                var = endo_type
-                val = self.blocks['MAT_TYPE'][endo_type]
-                compiled_file.append('    ' + var + ' = ' + var + '.astype(np.' + str(val) + ')\n')
-            compiled_file.append('\n')
+        # Sort endo_mat to make output consistent and more organized
+        sorted_endo_mat = list(self.blocks['ENDO_MAT'].keys())
+        sorted_endo_mat.sort()
+        compiled_file.append('    \n')
 
-            # Initialize values of endogenous variables
-            compiled_file.append('    #SETTING INITIAL VALUES\n')
-            sorted_endo_init = list(self.blocks['ENDO_INIT'].keys())
-            sorted_endo_init.sort()
-            for var in sorted_endo_init:
-                lhs = self._get_formula(var, False, init=True)
-                rhs = self._get_formula(self.blocks['ENDO_INIT'][var], True, init=True)
-                compiled_file.append('    #'  + var + '\n')
-                compiled_file.append('    ' + lhs + ' = ' + rhs + '\n')
-            compiled_file.append('\n')
+        # 3. Initialize matrix
+        compiled_file.append('    #SETTING UP MATRIX\n')
+        for m in sorted_endo_mat:
+            val = self._get_formula(self.blocks['ENDO_MAT'][m]['eq'], True, init=True)
+            compiled_file.append('    ' + m + ' = ' + str(val) + '\n')
+        compiled_file.append('    \n')
 
-            # Extend database for the entire period
-            compiled_file.append('    #Extend database for entire period\n')
-            compiled_file.append('    for t in range(iterations):\n')
-            for agent in sorted_agents:
-                compiled_file.append('        ' + agent + '[t, :, :] = ' + agent + '[0, :, :]\n')
-            compiled_file.append('\n')
+        # 5. Set matrix types
+        compiled_file.append('    #SETTING UP MATRIX TYPE\n')
+        sorted_endo_type = list(self.blocks['MAT_TYPE'].keys())
+        sorted_endo_type.sort()
+        for endo_type in sorted_endo_type:
+            var = endo_type
+            val = self.blocks['MAT_TYPE'][endo_type]
+            compiled_file.append('    ' + var + ' = ' + var + '.astype(np.' + str(val) + ')\n')
+        compiled_file.append('\n')
 
-            #Start model loop
-            compiled_file.append('    #STEPS OF THE MODEL\n')
-            compiled_file.append('    for t in range(iterations):\n')
-            compiled_file.append('        if t == 0:\n')
-            compiled_file.append('            continue\n')
-            compiled_file.append('        print(t)\n')
+        # Initialize values of endogenous variables
+        compiled_file.append('    #SETTING INITIAL VALUES\n')
+        sorted_endo_init = list(self.blocks['ENDO_INIT'].keys())
+        sorted_endo_init.sort()
+        for var in sorted_endo_init:
+            lhs = self._get_formula(var, False, init=True)
+            rhs = self._get_formula(self.blocks['ENDO_INIT'][var], True, init=True)
+            compiled_file.append('    #'  + var + '\n')
+            compiled_file.append('    ' + lhs + ' = ' + rhs + '\n')
+        compiled_file.append('\n')
 
-            whiteSpaceCounter = 2
-            whiteSpace = '    '
+        # Extend database for the entire period
+        compiled_file.append('    #Extend database for entire period\n')
+        compiled_file.append('    for t in range(iterations):\n')
+        for agent in sorted_agents:
+            compiled_file.append('        ' + agent + '[t, :, :] = ' + agent + '[0, :, :]\n')
+        compiled_file.append('\n')
 
-            #DEBUG TRANSFER ALL VARIABLE VALUES TO NEXT ITERATION
-            for var in self.model_ENDO_VARS:
-                lhs = self._get_formula(var, False, lag=0)
-                rhs = self._get_formula(var, True, lag=1)
-                compiled_file.append(whiteSpaceCounter * whiteSpace + lhs + ' = ' + rhs + '\n')
+        #Start model loop
+        compiled_file.append('    #STEPS OF THE MODEL\n')
+        compiled_file.append('    for t in range(iterations):\n')
+        compiled_file.append('        if t == 0:\n')
+        compiled_file.append('            continue\n')
+        compiled_file.append('        print(t)\n')
+
+        whiteSpaceCounter = 2
+        whiteSpace = '    '
+
+        #DEBUG TRANSFER ALL VARIABLE VALUES TO NEXT ITERATION
+        for var in self.model_ENDO_VARS:
+            lhs = self._get_formula(var, False, lag=0)
+            rhs = self._get_formula(var, True, lag=1)
+            compiled_file.append(whiteSpaceCounter * whiteSpace + lhs + ' = ' + rhs + '\n')
 
 
-            for step in self.blocks['STEPS']:
-                if re.sub('\[.*\]', '' , step) in self.model_EQ_NAMES:
-                    iterators = re.split('\[|\]', step)
-                    iterators = [p for p in iterators[1:] if p!='']
-                    step = re.sub('\[.*\]', '' , step)
-                    eq = self.blocks['ENDO_EQ'][step]['equation']
-                    eq_split = eq.split('=', 1)
-                    lhs = eq_split[0]
-                    rhs = eq_split[1]
-                    # There are several things to parse and to keep in mind in the following section.
-                    # The goal is to have a rhs string which contains the right hand side part of the equation with conditions included
-                    # This string can then easily be changed into its numpy form and can also be commented above the equation for debugging purposes
+        for step in self.blocks['STEPS']:
+            if re.sub('\[.*\]', '' , step) in self.model_EQ_NAMES:
+                iterators = re.split('\[|\]', step)
+                iterators = [p for p in iterators[1:] if p!='']
+                step = re.sub('\[.*\]', '' , step)
+                eq = self.blocks['ENDO_EQ'][step]['equation']
+                eq_split = eq.split('=', 1)
+                lhs = eq_split[0]
+                rhs = eq_split[1]
+                # There are several things to parse and to keep in mind in the following section.
+                # The goal is to have a rhs string which contains the right hand side part of the equation with conditions included
+                # This string can then easily be changed into its numpy form and can also be commented above the equation for debugging purposes
 
-                    #Regarding conditions, we need to parse conditional statements which may contain conditions within conditions
-                    #The above is solved by iterating through thestring and pushing subgroups within groups whenever we encounter a ( or )
-                    #The subgroups in the output can then be split along the && and || operators, which will give the computable statement
-                    condition = self.blocks['ENDO_EQ'][step]['condition']
+                #Regarding conditions, we need to parse conditional statements which may contain conditions within conditions
+                #The above is solved by iterating through thestring and pushing subgroups within groups whenever we encounter a ( or )
+                #The subgroups in the output can then be split along the && and || operators, which will give the computable statement
+                condition = self.blocks['ENDO_EQ'][step]['condition']
 
-                    #Iterating through the condition, and creating subgroups out of string in parenthesis
+                #Iterating through the condition, and creating subgroups out of string in parenthesis
+                groups = []
+                depth = 0
+                try:
+                    for char in condition:
+                        if char == '(' or char == '[':
+                            push(char, groups, depth)
+                            push([], groups, depth)
+                            depth += 1
+                        elif char == ')' or char == ']':
+                            depth -= 1
+                            push(char, groups, depth)
+                        else:
+                            push(char, groups, depth)
+                except IndexError:
+                    raise ValueError('Syntax Error: Parentheses mismatch in condition \"'+condition+'\"')
+                if depth > 0:
+                    raise ValueError('Syntax Error: Parentheses mismatch in condition \"'+condition+'\"')
+                #Recursively iterating out of the subgroups, making the necessary && || changes at the same time
+                condition = rec_iter_groups(groups)
+                if len(condition)>0:
+                    not_condition = 'abs(('+condition+')-1)'
+                    rhs = '(' + condition + ')' +' * ' + '(' + rhs + ')' + ' + ' + '(' + not_condition + ' * ' + '(' + lhs + ')' + ')'
+
+                compiled_file.append(whiteSpaceCounter*whiteSpace+'# '+lhs+' = '+rhs+'\n')
+                lhs = self._get_formula(lhs, False, lag=0, iterators=iterators)
+                rhs = self._get_formula(rhs, True, lag=0, iterators=iterators)
+                compiled_file.append(whiteSpaceCounter*whiteSpace+lhs+' = '+rhs+'\n')
+
+            elif step == '}':
+                whiteSpaceCounter = whiteSpaceCounter-1
+            elif any([re.match('^' + statement + '\(.+\){$', step) for statement in self.supported_statements]) or 'break' or 'quit' in step:
+                for statement in self.supported_statements:
+                    if re.match('^' + statement + '\(.+\){$', step):
+                        break
+                if 'break' in step:
+                    statement = 'break'
+                if 'quit' in step:
+                    statement = 'quit'
+                if statement == 'if' or statement == 'while':
+                    condition = re.search('\(.*\)', step).group(0)[1:-1]
                     groups = []
                     depth = 0
                     try:
@@ -627,101 +674,57 @@ class ABM:
                             else:
                                 push(char, groups, depth)
                     except IndexError:
-                        raise ValueError('Syntax Error: Parentheses mismatch in condition \"'+condition+'\"')
+                        raise ValueError('Syntax Error: Parentheses mismatch in condition \"' + condition + '\"')
                     if depth > 0:
-                        raise ValueError('Syntax Error: Parentheses mismatch in condition \"'+condition+'\"')
-                    #Recursively iterating out of the subgroups, making the necessary && || changes at the same time
+                        raise ValueError('Syntax Error: Parentheses mismatch in condition \"' + condition + '\"')
                     condition = rec_iter_groups(groups)
-                    if len(condition)>0:
-                        not_condition = 'abs(('+condition+')-1)'
-                        rhs = '(' + condition + ')' +' * ' + '(' + rhs + ')' + ' + ' + '(' + not_condition + ' * ' + '(' + lhs + ')' + ')'
+                    condition = self._get_formula(condition, True, lag=0)
+                    compiled_file.append(whiteSpaceCounter * whiteSpace + statement + ' ' + condition + ':\n')
+                    whiteSpaceCounter = whiteSpaceCounter+1
+                elif statement == 'for':
+                    condition = re.search('\([^\(\),]*,[^\(\),]*\)', step).group(0)[1:-1]
+                    condition = condition.split(',')
+                    compiled_file.append(whiteSpaceCounter * whiteSpace + statement + ' ' + condition[0] + ' in ' + condition[1] + ':\n')
+                    whiteSpaceCounter = whiteSpaceCounter+1
 
-                    compiled_file.append(whiteSpaceCounter*whiteSpace+'# '+lhs+' = '+rhs+'\n')
-                    lhs = self._get_formula(lhs, False, lag=0, iterators=iterators)
-                    rhs = self._get_formula(rhs, True, lag=0, iterators=iterators)
-                    compiled_file.append(whiteSpaceCounter*whiteSpace+lhs+' = '+rhs+'\n')
-                    compiled_file.append(whiteSpaceCounter*whiteSpace+'if t == t_test:\n')
-                    compiled_file.append((whiteSpaceCounter+1)*whiteSpace+'print(\''+str(step)+'\')\n')
-                    compiled_file.append((whiteSpaceCounter+1)*whiteSpace+'print('+lhs+')\n')
-
-                elif step == '}':
-                    whiteSpaceCounter = whiteSpaceCounter-1
-                elif any([re.match('^' + statement + '\(.+\){$', step) for statement in self.supported_statements]) or 'break' or 'quit' in step:
-                    for statement in self.supported_statements:
-                        if re.match('^' + statement + '\(.+\){$', step):
-                            break
-                    if 'break' in step:
-                        statement = 'break'
-                    if 'quit' in step:
-                        statement = 'quit'
-                    if statement == 'if' or statement == 'while':
-                        condition = re.search('\(.*\)', step).group(0)[1:-1]
-                        groups = []
-                        depth = 0
-                        try:
-                            for char in condition:
-                                if char == '(' or char == '[':
-                                    push(char, groups, depth)
-                                    push([], groups, depth)
-                                    depth += 1
-                                elif char == ')' or char == ']':
-                                    depth -= 1
-                                    push(char, groups, depth)
-                                else:
-                                    push(char, groups, depth)
-                        except IndexError:
-                            raise ValueError('Syntax Error: Parentheses mismatch in condition \"' + condition + '\"')
-                        if depth > 0:
-                            raise ValueError('Syntax Error: Parentheses mismatch in condition \"' + condition + '\"')
-                        condition = rec_iter_groups(groups)
-                        condition = self._get_formula(condition, True, lag=0)
-                        compiled_file.append(whiteSpaceCounter * whiteSpace + statement + ' ' + condition + ':\n')
-                        whiteSpaceCounter = whiteSpaceCounter+1
-                    elif statement == 'for':
-                        condition = re.search('\([^\(\),]*,[^\(\),]*\)', step).group(0)[1:-1]
-                        condition = condition.split(',')
-                        compiled_file.append(whiteSpaceCounter * whiteSpace + statement + ' ' + condition[0] + ' in ' + condition[1] + ':\n')
-                        whiteSpaceCounter = whiteSpaceCounter+1
-
-                    elif statement == 'break':
-                        compiled_file.append(whiteSpaceCounter * whiteSpace + statement + '\n')
-                    elif statement == 'quit':
-                        compiled_file.append(whiteSpaceCounter * whiteSpace + statement + '()\n')
-                    else:
-                        raise ValueError('Syntax Error: Statement is not implemented \"' + step + '\"')
+                elif statement == 'break':
+                    compiled_file.append(whiteSpaceCounter * whiteSpace + statement + '\n')
+                elif statement == 'quit':
+                    compiled_file.append(whiteSpaceCounter * whiteSpace + statement + '()\n')
                 else:
-                    raise ValueError('Syntax Error: Cannot understand step \"' + step + '\"')
+                    raise ValueError('Syntax Error: Statement is not implemented \"' + step + '\"')
+            else:
+                raise ValueError('Syntax Error: Cannot understand step \"' + step + '\"')
 
-            #compiled_file.append(whiteSpaceCounter*whiteSpace+'if t == t_test:\n')
-            #compiled_file.append((whiteSpaceCounter+1)*whiteSpace+'quit()\n')
+        #compiled_file.append(whiteSpaceCounter*whiteSpace+'if t == t_test:\n')
+        #compiled_file.append((whiteSpaceCounter+1)*whiteSpace+'quit()\n')
 
-            # TEMPORARY UNTIL NICER SOLUTION
-            agents = list(self.blocks['ENDO_VAR'].keys())
-            for agent in agents:
-                db_names = self.blocks['ENDO_VAR'][agent]
-                if len(db_names) == 0:
-                    db_names = ['']
-                compiled_file.append('    ' + agent + '_db = '+str(db_names) + '\n')
-            all_db = '[' + agents[0] + "".join([', ' + a for a in agents[1:]]) + ']'
-            all_db_names = '['+ agents[0] +'_db' + "".join([', '+a+'_db' for a in agents[1:]]) + ']'
-            compiled_file.append('    ' + 'db = ' + str(all_db) + '\n')
-            compiled_file.append('    ' + 'db_name = ' + str(all_db_names) + '\n')
-            compiled_file.append('    ' + 'return db, db_name\n')
+        # TEMPORARY UNTIL NICER SOLUTION
+        agents = list(self.blocks['ENDO_VAR'].keys())
+        for agent in agents:
+            db_names = self.blocks['ENDO_VAR'][agent]
+            if len(db_names) == 0:
+                db_names = ['']
+            compiled_file.append('    ' + agent + '_db = '+str(db_names) + '\n')
+        all_db = '[' + agents[0] + "".join([', ' + a for a in agents[1:]]) + ']'
+        all_db_names = '['+ agents[0] +'_db' + "".join([', '+a+'_db' for a in agents[1:]]) + ']'
+        compiled_file.append('    ' + 'db = ' + str(all_db) + '\n')
+        compiled_file.append('    ' + 'db_name = ' + str(all_db_names) + '\n')
+        compiled_file.append('    ' + 'return db, db_name\n')
 
 
 
-            for func in self.numba_func.include:
-                function = self.numba_func[func].split('\n')
-                for l in function:
-                    compiled_file.append(l+'\n')
+        for func in self.numba_func.include:
+            function = self.numba_func[func].split('\n')
+            for l in function:
+                compiled_file.append(l+'\n')
 
-            #TODO
-            #Restore order of EXO_PARAM and ENDO_INIT to that in the modfile
-            #Implement check on closing curly brackets
-            #Finish compilation routine
-            #Add estimation routine
-            #Add forward looking model
-            #Add lag option for equations
+        #TODO
+        #Restore order of EXO_PARAM and ENDO_INIT to that in the modfile
+        #Add estimation routine
+        #Add forward looking model
+        #Add lag option for equations
+        if writeModel == True:
             with open('compiledModel.py', 'w') as f:
                 for l in compiled_file:
                     f.write(l)
@@ -837,10 +840,32 @@ class ABM:
                     continue
             return prec_arg_l+var+'['+mat_index[0]+"".join([', '+i for i in mat_index[1:]])+']'+prec_arg_r
 
-    def run(self, iterations):
+    def plot_normalize(self, normalization_input):
+        self.plot_normalization = normalization_input
+
+    def run(self, iterations, plot=False):
         from compiledModel import run
         dbase = run(iterations)
         dbase = dseries(dbase[0], dbase[1])
+        if plot == True:
+            import matplotlib.pyplot as plt
+            fig = plt.figure(figsize=(10, 10))
+            folder_to_save_plots = self.modfile+str(iterations)+'/'
+            if os.path.exists(folder_to_save_plots):
+                pass
+            else:
+                os.mkdir(folder_to_save_plots)
+            for n in dbase.names:
+                if n in list(self.plot_normalization.keys()):
+                    plt.plot(dbase[n]/dbase[self.plot_normalization[n]])
+                    plt.suptitle(n)
+                    plt.savefig(folder_to_save_plots + n + '.png')
+                    plt.clf()
+                else:
+                    plt.plot(dbase[n])
+                    plt.suptitle(n)
+                    plt.savefig(folder_to_save_plots + n + '.png')
+                    plt.clf()
         return dbase
 
     class numba_functions:
@@ -952,39 +977,66 @@ class dseries:
 
 
 if __name__ == "__main__":
-    import matplotlib.pyplot as plt
-    fig = plt.figure(figsize=(10, 10))
-    folder_to_save_plots = 'run_test/'
 
-    model = ABM('model.txt', cache=False)
-    iterations = 1000
-    dbase = model.run(iterations)
-    #dbase.save('dbase_test')
-    #dbase = dseries([],[])
-    #dbase.load('dbase_test.dat')
+    model = ABM('model.txt', cache=True)
 
-    adj_PM = ['BADB', 'BETAB', 'BETABREAL', 'BETABRES', 'BETAF', 'BETAFREAL', 'BETAFRES',
-              'C', 'CRES', 'DELTAH', 'DIV', 'DIV1', 'GAMMAB', 'GAMMAF', 'GAMMAFres', 'Gw',
-              'INTB', 'INTCB', 'INTCBb', 'INTF', 'INTPDEBTB', 'LAMBDAB', 'LAMBDAF',
-              'M', 'OMEGAB', 'OMEGAF', 'OMEGAF0', 'OMEGAH', 'PIGRB', 'PIGRF', 'PSALVA', 'Pdebt',
-              'PdebtCB', 'Pdef', 'Ptot', 'Ptot2', 'Ptot3', 'RIENTR', 'SPESA', 'TaxB', 'TaxF',
-              'TaxH', 'TaxPatrF', 'TaxPatrH', 'Wm', 'Wm0', 'Wtot']
-
-    for n in dbase.names:
-        if n in adj_PM:
-            plt.plot(dbase[n]/dbase['Pm'])
-            plt.suptitle(n)
-            plt.savefig(folder_to_save_plots + n + '.png')
-            plt.clf()
-        else:
-            plt.plot(dbase[n])
-            plt.suptitle(n)
-            plt.savefig(folder_to_save_plots + n + '.png')
-            plt.clf()
-    plt.scatter(dbase['LAMBDAF'][150:], dbase['ur'][150:])
-    plt.suptitle('Phillips curve')
-    plt.savefig(folder_to_save_plots + 'phillipscurve.png')
-    plt.clf()
-
-
+    model.plot_normalize({'BADB':'Pm',
+                      'BETAB':'Pm',
+                      'BETABREAL':'Pm',
+                      'BETABRES':'Pm',
+                      'BETAF':'Pm',
+                      'BETAFREAL':'Pm',
+                      'BETAFRES':'Pm',
+                      'C':'Pm',
+                      'CRES':'Pm',
+                      'DELTAH':'Pm',
+                      'DIV':'Pm',
+                      'DIV1':'Pm',
+                      'GAMMAB':'Pm',
+                      'GAMMAF':'Pm',
+                      'GAMMAFres':'Pm',
+                      'Gw':'Pm',
+                      'INTB':'Pm',
+                      'INTCB':'Pm',
+                      'INTCBb':'Pm',
+                      'INTF':'Pm',
+                      'INTPDEBTB':'Pm',
+                      'LAMBDAB':'Pm',
+                      'LAMBDAF':'Pm',
+                      'M':'Pm',
+                      'OMEGAB':'Pm',
+                      'OMEGAF':'Pm',
+                      'OMEGAF0':'Pm',
+                      'OMEGAF':'Pm',
+                      'OMEGAH':'Pm',
+                      'PIGRB':'Pm',
+                      'PIGRF':'Pm',
+                      'PSALVA':'Pm',
+                      'Pdebt':'Pm',
+                      'PdebtCB':'Pm',
+                      'Pdef':'Pm',
+                      'Ptot':'Pm',
+                      'Ptot2':'Pm',
+                      'Ptot3':'Pm',
+                      'SPESA':'Pm',
+                      'TaxB':'Pm',
+                      'TaxF':'Pm',
+                      'TaxH':'Pm',
+                      'TaxPatrF':'Pm',
+                      'TaxPatrH':'Pm',
+                      'Wm':'Pm',
+                      'Wm0':'Pm',
+                      'Wtot':'Pm'})
+                      
+    iterations = 10
+    dbase = model.run(iterations, plot=True)
+    dbase.save('dbase')
+    
+    params = {'adjF': '0.1',
+              'adjFprice': '0.1',
+              'adjFleva': '0.1',
+              'adjB': '0.1',
+              'adjH': '0.1',
+              }
+    param = model.estimate(dbase, initial_params=params, iterations = 10, start = 0)
 
