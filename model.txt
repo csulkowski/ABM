@@ -1,0 +1,1648 @@
+// Macro Modfile
+SETTINGS
+float_isclose = 1e9
+numba = True
+;
+
+AGENTS
+WORLD = [depend = None, num = 1, tag = W, iterator = wo]
+NATIONAL = [depend = WORLD, num = 1, tag = N, iterator = n]
+HOUSEHOLD = [depend = NATIONAL, num = 500, tag = H, iterator = h, group = household_good_select, h_select_l, h_select_d]
+FIRM = [depend = NATIONAL, num = 80, tag = F, iterator = f, group = firm_credit_select, firm_labor_select, f_select]
+BANK = [depend = NATIONAL, num = 10, tag = B, iterator = b, group = bank_deposit_select, b_select]
+GOVERNMENT = [depend = NATIONAL, num = 1, tag = G, iterator = g]
+CENTRALBANK = [depend = NATIONAL, num = 1, tag = CB, iterator = cb]
+;
+
+//-------------------------ENDO VAR---------------------------------------------
+ENDO_VAR
+WORLD
+
+NATIONAL
+
+LAMBDAF
+LAMBDAB
+RIENTRF
+RIENTRB
+RIENTR
+DIV1
+DIV1_1
+PSALVA
+OMEGAH
+OMEGAF
+DIV
+BETAFREAL
+BETABREAL
+OMEGAF0
+OMEGAB0
+BETAFres
+BETABres
+INFL
+ur
+defF
+defB
+BETAF
+BETAB
+INTCBb
+GAMMAFRES
+UNEMP
+Y
+YRES
+CRES
+C
+SCORTE
+SPESA
+Ptot
+Ptot2
+Ptot3
+Pm_1
+Pm
+OMEGAF2
+OMEGAB
+DELTAH
+DELTAB
+BADB
+GAMMAF
+GAMMAB
+PIGRF
+PIGRF2
+PIGRB
+LEVAT
+RB1
+RB2
+Wtot
+Wm
+Wm0
+INTF
+INTB
+rBm
+INFLW0
+Wm0_1
+OMEGAH_PM
+OMEGAF_PM
+OMEGAB_PM
+
+
+HOUSEHOLD
+omegaH
+w
+rD1
+unemp
+sres
+s
+cash
+omegaH_1
+intH
+deltaH
+c
+weff
+cres
+spesa
+rD1res
+omegaH_pm
+w_Pm
+deltaH_Pm
+
+FIRM
+rientrF
+omegaF
+omegaFF
+price
+rB
+rB2
+betaFres
+betaFreal
+gammaF
+gammaFres
+betaF
+pigrF
+pigrF2
+d
+aripigrF
+scorte
+omegaF2
+intF
+intF_1
+lab
+levat
+y
+yres
+minbetaF
+betaFeff
+wb
+labnet
+qeff
+revenue
+pigrFlord
+pigrFlord2
+pigrFutile
+pigrFtax
+divF
+omegaF_pm
+betaFreal_Pm
+
+BANK
+rientrB
+omegaB
+omegaBB
+betaBreal
+betaB
+betaBres
+gammaB
+deltaB
+k1
+k2
+rD
+rB1
+db
+m
+badB
+intB
+betaBmax
+intCB
+pigrB
+deltaB_1
+aripigrB
+pdebtB
+des_pdebtB
+intPdebtB
+rD_1
+pigrBlord2
+pigrButile
+pigrBtax
+divB
+pigrBlord
+omegaB_pm
+
+
+GOVERNMENT
+G_
+TaxH
+TaxH_1
+Gw
+Geff
+Pdef
+PDebt
+PDebtB
+PDebtCB
+INTCB
+INTPDEBTB
+TaxPatrH
+TaxF
+TaxPatrF
+TaxB
+TaxPatrB
+
+CENTRALBANK
+rCB
+M
+;
+
+ENDO_MAT
+b_f_credit_betaFeff = zeros((B,F))
+b_f_credit_rB = zeros((B,F))
+crednet22 = zeros((B,F))
+b_h_sres = zeros((B,H))
+b_h_rD = zeros((B,H))
+select_pw = concatenate((zeros((H-pw)), ones((pw))))
+;
+
+MAT_TYPE
+;
+
+//-------------------------ENDO INIT---------------------------------------------
+ENDO_INIT
+//WORLD
+
+//NATIONAL
+
+//HOUSEHOLD
+w = fmax(random.normal(0,1,(H))* 0.01 + 0.5, 0.01)
+rD1 = fmax(random.normal(0,1,(H)) * 0.001 + 0.001, 0.00001)
+sres = 0
+s = 0
+cash = 0
+omegaH = fmax(random.normal(0,1,(H))* 0.01 + 0.5, 0.01)
+omegaH_1 = omegaH
+intH = 0
+deltaH = 0
+unemp = 1
+c = 0
+
+
+//FIRM
+omegaF = fmax(random.normal(0,1,(F)) + 3, 0.1)
+omegaFF = omegaFmin * omegaF
+omegaF2 = omegaF
+betaF = 0
+betaFreal = 0
+pigrF = 0
+pigrF2 = 0
+levat = 5
+rB = rCB
+rB2 = 0.01
+betaFres = 0
+price = fmax(random.normal(0,1,(F)) * 0.01 + 0.2, 0.01)
+yres = 0
+d = 0.5
+aripigrF = 0
+scorte = 0
+y = 0
+intF = 0
+intF_1 = intF
+lab = 1
+rientrF = 0
+
+
+//BANK
+omegaB = fmax(random.normal(0,1,(B)) + 5, 0.2)
+omegaBB = omegaBmin * omegaB
+deltaB = fmax(random.normal(0,1,(B)) + 5, 0.3)
+pigrB = 0
+db = 0.5
+rB1 = fmax(random.normal(0,1,(B)) * 0.01 + 0.01, 0.001)
+rD = fmax(random.normal(0,1,(B)) * 0.001 + 0.001, 0.00001)
+betaBres = 0
+betaBreal = 0
+aripigrB = 0
+pdebtB = 0
+m = 0
+k1 = reg1*omegaB
+k2 = reg2*omegaB + deltaB + m
+rientrB = 0
+
+//GOVERNMENT
+
+//CENTRALBANK
+rCB = 0.01
+M = 0
+;
+
+EXO_PARAM
+t_test = 1
+wagemin = 0.5
+phi = 3
+phi1 = phi
+c1 = 0.8
+c2 = 0.3
+sogliaG = 0.2
+sogliaL = 0.2
+sogliaC = 0.2
+sogliaD = 0.2
+pw = int_(0.33*H)
+tauF = 0.3
+tauB = 0.3
+tauH = 0.3
+taupatrF = 0.05
+taupatrB = 0.05
+taupatrH = 0.05
+parsc = 0.1
+parpatr = 3
+parlab = 0
+shareBM = 1
+unempBenef = 0
+rate_BM = 1
+omegaFmin = 0
+omegaBmin = 0
+betaBup = 0.1
+reg1 = 10
+reg2 = 0.5
+adjF = 0.05
+adjFprice = 0.05
+adjFleva = 0.05
+adjB = 0.05
+adjH = 0.05
+levatmin = 0.01
+instituQ = 1
+inflT = 0.02
+unempT = 0.08
+riskprop = 2
+contr = 0
+;
+
+
+//-------------------------------------------------------------
+//DECLARE ENDOGENOUS EQUATIONS
+ENDO_EQ
+//========================================================================================
+//WORLD
+
+[name=b_f_credit_betaFeff]
+b_f_credit_betaFeff = betaFeff
+
+[name=b_f_credit_rB]
+b_f_credit_rB = rCB + rB1 + rB2
+
+[name=b_h_sres]
+b_h_sres = sres
+
+[name=b_h_rD]
+b_h_rD = rD
+
+[name=b_f_credit_betaFeff_nan]
+b_f_credit_betaFeff = zeros((B,F))
+
+[name=b_f_credit_rB_nan]
+b_f_credit_rB = zeros((B,F))
+
+[name=b_h_sres_nan]
+b_h_sres = zeros((B,H))
+
+[name=b_h_rD_nan]
+b_h_rD = zeros((B,H))
+
+//========================================================================================
+//NATIONAL
+
+[name=RIENTR, description='Sum of all re-entries']
+RIENTR = sum(rientrF) + sum(rientrB)
+
+[name=DIV1, description='Total dividends minus re-entries']
+DIV1 = DIV - RIENTR
+
+[name=PSALVA0, description='Set government bailout to 0']
+PSALVA = 0
+
+[name=PSALVA, condition=-DIV1 > OMEGAH, description='Set bailout']
+PSALVA = - DIV1 - OMEGAH
+
+[name=DIV1H, condition=-DIV1 > OMEGAH, description='Total dividends minus re-entries']
+DIV1 = - OMEGAH
+
+[name=DIV1_1]
+DIV1_1 = DIV1
+
+[name=BETAF]
+BETAF = sum(betaF)
+
+[name=BETAB]
+BETAB = sum(betaB)
+
+[name=INTCBb]
+INTCBb = sum(intCB)
+
+[name=BETAFres]
+BETAFres = sum(betaFres)
+
+[name=BETABres]
+BETABres = sum(betaBres)
+
+[name=GAMMAFRES]
+GAMMAFRES = sum(gammaFres)
+
+[name=UNEMP]
+UNEMP = sum(unemp)
+
+[name=ur]
+ur = UNEMP/H
+
+[name=Y]
+Y = sum(y)
+
+[name=YRES]
+YRES = sum(yres)
+
+[name=CRES]
+CRES = sum(cres)
+
+[name=C]
+C = CRES
+
+[name=SCORTE]
+SCORTE = sum(scorte)
+
+[name=SPESA]
+SPESA = sum(spesa)
+
+[name = Ptot]
+Ptot = sum(price*qeff)
+
+[name = Ptot2]
+Ptot2 = sum(price * y)
+
+[name = Ptot3]
+Ptot3 = Ptot2 + Gw
+
+[name = Pm_1]
+Pm_1 = Pm
+
+[name = Pm]
+Pm = Ptot / sum(qeff)
+
+[name = DIV]
+DIV = sum(divF) + sum(divB)
+
+[name = OMEGAF]
+OMEGAF = sum(omegaF)
+
+[name = OMEGAF2]
+OMEGAF2 = sum(omegaF2)
+
+[name = OMEGAF0]
+OMEGAF0 = sum(omegaF[omegaF > 0])
+
+[name = OMEGAB]
+OMEGAB = sum(omegaB)
+
+[name = OMEGAB0]
+OMEGAB0 = sum(omegaB[omegaB > 0])
+
+[name = OMEGAH]
+OMEGAH = sum(omegaH)
+
+[name = DELTAH]
+DELTAH = sum(deltaH)
+
+[name = DELTAB]
+DELTAB = sum(deltaB)
+
+[name = BETABREAL]
+BETABREAL = sum(betaBreal)
+
+[name = BETAFREAL]
+BETAFREAL = sum(betaFreal)
+
+[name = BADB]
+BADB = sum(badB)
+
+[name = GAMMAF]
+GAMMAF = sum(gammaF)
+
+[name = GAMMAB]
+GAMMAB = sum(gammaB)
+
+[name = PIGRF]
+PIGRF = sum(pigrFlord)
+
+[name = PIGRF2]
+PIGRF2 = sum(pigrF2)
+
+[name = PIGRB]
+PIGRB = sum(pigrBlord)
+
+[name = LAMBDAF]
+LAMBDAF = BETAFREAL / OMEGAF0
+
+[name = LAMBDAB]
+LAMBDAB = BETAFREAL / OMEGAB0
+
+[name = LEVAT]
+LEVAT = mean(levat)
+
+[name = RB1]
+RB1 = mean(rB1)
+
+[name = RB2]
+RB2 = mean(rB2)
+
+[name = Wtot]
+Wtot = sum(weff)
+
+[name = Wm]
+Wm = mean(weff)
+
+[name = Wm0_1]
+Wm0_1 = Wm0
+
+[name = Wm0]
+Wm0 = mean(weff[unemp==0])
+
+[name = INTF]
+INTF = sum(intF)
+
+[name = INTB]
+INTB = sum(intB)
+
+[name = rBm]
+rBm = INTF / BETAFREAL
+
+[name = INFL]
+INFL = (Pm-Pm_1)/Pm
+
+[name = INFLW0]
+INFLW0 = (Wm0 - Wm0_1)/Wm0_1
+
+[name = OMEGAH_PM]
+OMEGAH_PM = OMEGAH/H/Pm
+
+[name = OMEGAF_PM]
+OMEGAF_PM = OMEGAF/F/Pm
+
+[name = OMEGAB_PM]
+OMEGAB_PM = OMEGAB/B/Pm
+
+[name = RIENTRF]
+RIENTRF = sum(rientrF)
+
+[name = RIENTRB]
+RIENTRB = sum(rientrB)
+
+//========================================================================================
+//HOUSEHOLD
+
+[name=unemp_1]
+unemp = 1
+
+[name = unemp_pw, condition= select_pw == 1]
+unemp = 0
+
+[name=household_labor_select]
+h_select_l = (arange((H))[(unemp==1)*(gammaFres>=w)*(random.uniform(0,1,(H))<=sogliaL)])
+
+[name=contrH_l, condition = size(h_select_l) == 0]
+contr = 1
+
+[name=h_select_l]
+h =  h_select_l[w==min(w)][0]
+
+[name=unemp_L]
+unemp = 0
+
+[name=cash]
+cash = cash + (omegaH/sum(omegaH)) * DIV1_1
+
+[name=weff]
+weff = (1-tauH) * w
+
+[name=weff_0, condition=unemp==1]
+weff = 0
+
+[name = c]
+c = fmin(fmax((c1 * weff + c2 * (deltaH + cash)), mean(price)), weff + deltaH + cash)
+
+[name=w_1]
+w = w
+
+[name = wup, condition=unemp==0]
+w = w * (1+adjH * random.uniform(0,1,(H)))
+
+[name = wdown, condition=unemp==1]
+w = w * (1-adjH * random.uniform(0,1,(H)))
+
+[name = wmin]
+w = fmax(w, wagemin*(1+tauH) * max(price))
+
+[name = w_Pm]
+w_Pm = w / Pm
+
+[name = cres]
+cres = c
+
+[name = household_good_select]
+household_good_select = random.permutation(arange(H)[cres>min(price)])
+
+[name=cres_g, condition=cres >= price]
+cres = cres - price
+
+[name=spesa]
+spesa = c - cres
+
+[name=s]
+s = weff - spesa + intH
+
+[name = rD1up, condition = sres == 0]
+rD1 = rD1 * (1+adjH*random.uniform(0,1,(H)))
+
+[name = rD1down, condition = sres > 0]
+rD1 = rD1 * (1-adjH*random.uniform(0,1,(H)))
+
+[name = sres]
+sres = deltaH + cash + s
+
+[name = sres_Tax, condition = sres > parpatr * mean(price)]
+sres = (1-taupatrH) * sres
+
+[name = rD1res]
+rD1res = rD1
+
+[name=household_deposit_select]
+h_select_d = random.permutation(arange((H))[(sres > 0) * (rD1 <= rD) * (random.uniform(0,1, (H))<=sogliaD)])
+
+[name=contrH_d_size, condition = size(h_select_d) == 0]
+contr = 1
+
+[name=contrH_d_minmax, condition = min(rD1[sres>0], initial = inf) > max(rD)]
+contr = 1
+
+
+[name=h_select_d]
+h =  h_select_d[rD1==min(rD1)][0]
+
+
+[name = sres_d]
+sres = 0
+
+[name = cash_sres]
+cash = sres
+
+[name = deltaH]
+deltaH = nansum(b_h_sres.T*(omegaB>omegaBB),1)+nansum(fmax(((omegaB + deltaB)/(deltaB))*b_h_sres.T*(omegaB<=omegaBB),0),1)
+
+[name = deltaH_Pm]
+deltaH_Pm = deltaH/Pm
+
+[name = intH]
+intH = (nansum((b_h_sres* b_h_rD).T*(omegaB>omegaBB),1)+nansum(fmax(((omegaB + deltaB)/(deltaB))*(b_h_sres* b_h_rD).T*(omegaB<=omegaBB),0),1))
+
+[name = omegaH_1]
+omegaH_1 = omegaH
+
+[name = omegaH]
+omegaH = deltaH + cash
+
+[name = omegaH_pm]
+omegaH_pm = omegaH / Pm
+
+[name = shock_w_up, condition = t == 200]
+w = w + exp(0.66*log(w))
+
+//========================================================================================
+//FIRM
+//Re-entry equations
+
+[name=pigrF_1]
+pigrF = pigrF
+
+[name = rB_1]
+rB = rB
+
+[name=aripigrF_1]
+aripigrF = aripigrF
+
+[name = scorte_1]
+scorte = scorte
+
+[name=omegaF2_1]
+omegaF2 = omegaF2
+
+[name=betaF_1]
+betaF = betaF
+
+[name=lab_1]
+lab = lab
+
+[name=omegaF_1]
+omegaF = omegaF
+
+[name=rientrFF, condition=defF == F, description='Net worth of replaced firms when all have defaulted']
+rientrF = fmax(random.normal(0,1,(F)) + 0.5 * parpatr * mean(price), 0.1)
+
+[name=p_1]
+price = price
+
+[name=pFF, condition=defF == F, description='Price of replaced firms when all have defaulted']
+price = fmax(random.normal(0,1,(F)) * 0.01 + mean(price), 0.01)
+
+[name=rientrF, condition=omegaF <= omegaFF && defF != F, description='Net worth of replaced firms when some have defaulted']
+rientrF = random.uniform(0,1,(F)) * min(omegaF[omegaF > omegaFF])
+
+[name=pF, condition=omegaF <= omegaFF && defF != F, description='Price of replaced firms when all have defaulted']
+price = mean(price[omegaF>omegaFF])
+//price = mean(price)
+
+[name=rientrF0, description='Initial setting of net worth of replaced firms to zero']
+rientrF = 0
+
+[name=betaFreal]
+betaFreal = betaF - betaFres
+
+[name=betaFreal_Pm]
+betaFreal_Pm = betaFreal / Pm
+
+[name=betaFres]
+betaFres = betaF
+
+[name=gammaF]
+gammaF = omegaF + betaFreal
+
+[name=levatup, condition = (pigrF2 / (omegaF2 + betaFreal)) > rB && scorte < (parsc * y)]
+levat = levat * (1+adjFleva * random.uniform(0,1,(F)))
+
+[name=levatequ, condition = (pigrF2 / (omegaF2 + betaFreal)) == rB &&  scorte < (parsc * y)]
+levat = levat
+
+[name=levatdown, condition = ((pigrF2 / (omegaF2 + betaFreal)) < rB) || (scorte >= (parsc * y))]
+levat = levat * (1-adjFleva * random.uniform(0,1,(F)))
+
+[name=levatmin]
+levat = fmax(levat, levatmin)
+
+[name=minbetaF]
+minbetaF = fmax(ceil(parlab*lab)*max(w), max(w)-omegaF)
+
+[name=betaF]
+betaF = fmax(omegaF * levat, minbetaF)
+
+[name=rB2]
+rB2 = (riskprop**levat)/100.
+
+//Defaulting reset equations
+
+[name=pigrFdef, condition = omegaF<=omegaFF]
+pigrF = 0
+
+[name=rBdef, condition = omegaF<=omegaFF]
+rB = 2 * rCB
+
+[name = betaFresdef, condition = omegaF<=omegaFF]
+betaFres = 0
+
+[name = betaFrealdef, condition = omegaF<=omegaFF]
+betaFreal = 0
+
+[name = ydef, condition = omegaF<=omegaFF]
+y = 0
+
+[name = yresdef, condition = omegaF<=omegaFF]
+yres = 0
+
+[name=ddef, condition = omegaF<=omegaFF]
+d = 0.5
+
+[name=aripigrFdef, condition = omegaF<=omegaFF]
+aripigrF = 0
+
+[name=scortedef, condition = omegaF<=omegaFF]
+scorte = 0
+
+[name=omegaF2def, condition = omegaF<=omegaFF]
+omegaF2 = rientrF
+
+[name=betaFdef, condition = omegaF<=omegaFF]
+betaF = omegaF
+
+[name=intFdef, condition = omegaF<=omegaFF]
+intF = 0
+
+[name=intF_1def, condition = omegaF<=omegaFF]
+intF_1 = 0
+
+[name=labdef, condition = omegaF<=omegaFF]
+lab = 1
+
+[name=omegaFdef, condition = omegaF<=omegaFF]
+omegaF = rientrF
+
+//End of defaulting reset equations
+
+
+//Credit matching equations
+[name=betaFeffmin]
+betaFeff = fmin(fmin(betaBres, betaBmax), betaFres)
+
+[name=betaFres_c]
+betaFres = betaFres - betaFeff
+
+[name=firm_credit_select]
+firm_credit_select = random.permutation(arange((F))[betaFres>0])
+//End of credit matching equations
+
+//Labour Market equations
+[name = lab_0]
+lab = 0
+
+[name = labnet_0]
+labnet = 0
+
+[name = gammaFres]
+gammaFres = gammaF
+
+[name = firm_labor_select]
+firm_labor_select = random.permutation(arange(F)[(gammaFres>=min(w))==1])
+
+[name = gammaFres_L]
+gammaFres = gammaFres - w
+
+[name = lab_L]
+lab = lab + 1
+
+[name = labnet_L]
+labnet = labnet + w
+
+
+//Goods market
+[name=y_1]
+y = y
+
+[name=y]
+y = phi * lab + scorte
+
+[name=wb]
+wb = labnet
+
+[name=intF_1]
+intF_1 = intF
+
+[name=intF_t1]
+intF = intF
+
+[name=intF]
+intF = nansum(b_f_credit_betaFeff*b_f_credit_rB, 0)
+
+[name=rB]
+rB = intF / nansum(b_f_credit_betaFeff,0)
+
+[name=pup, condition = yres == 0 && y > 0]
+price = price * (1+adjFprice * random.uniform(0,1,(F)))
+
+[name=pdown, condition = (yres>0) || (y == 0)]
+price = price * (1-adjFprice * random.uniform(0,1,(F)))
+
+[name=pmin]
+price[y>0] = fmax(price[y>0], (wb[y>0] + intF_1[y>0]) / (y[y>0]))
+
+[name=yres_y]
+yres = y
+
+[name=qeff_0]
+qeff = 0
+
+[name=revenue_0]
+revenue = 0
+
+[name=firm_good_select]
+f_select = (arange((F))[(yres>0)*(price<=cres)*(random.uniform(0,1,(F)) <= sogliaG)])
+
+[name=contrF_g, condition = size(f_select) == 0]
+contr = 1
+
+[name=contrF_g_minmax, condition = min(price[yres>0], initial= inf) > max(cres)]
+contr = 1
+
+[name=f_select]
+f =  f_select[price==min(price)][0]
+
+[name=yres_g, condition=cres >= price]
+yres = yres - 1
+
+[name=qeff_g, condition=cres >= price]
+qeff = qeff + 1
+
+[name=revenue_g, condition=cres >= price]
+revenue=revenue+price
+
+[name=scorte]
+scorte = yres
+
+[name=revenue]
+revenue = price * qeff
+
+[name=pigrFlord]
+pigrFlord = revenue - wb - intF
+
+[name=pigrFlord2]
+pigrFlord2 = pigrFlord + aripigrF
+
+[name=pigrFutile]
+pigrFutile = fmax(pigrFlord2, 0)
+
+[name=aripigrF]
+aripigrF = fmin(pigrFlord2, 0)
+
+[name=pigrFtax]
+pigrFtax = tauF * pigrFutile
+
+[name=pigrF]
+pigrF = pigrFlord - pigrFtax
+
+[name=pigrF2]
+pigrF2 = pigrFlord
+
+[name=d_1]
+d = d
+
+[name=ddown, condition = yres == 0 && y > 0]
+d = d * (1-adjF * random.uniform(0,1,(F)))
+
+[name=dup, condition = (yres > 0) || (y == 0)]
+d = fmin(d * (1+adjF * random.uniform(0,1,(F))), 1)
+
+[name=divF_0]
+divF = 0
+
+[name=divF, condition = pigrF > 0]
+divF = d * pigrF
+
+[name=pigrF_divF, condition= pigrF > 0]
+pigrF = (1-d) * pigrF
+
+[name = omegaFF]
+omegaFF = omegaFmin * omegaF
+
+[name = omegaF2]
+omegaF2 = omegaF
+
+[name = omegaF]
+omegaF = omegaF + pigrF
+
+[name = omegaF_patrF, condition = omegaF > parpatr * mean(price)]
+omegaF = (1-taupatrF) * omegaF
+
+[name = omegaF_pm]
+omegaF_pm = omegaF / Pm
+
+//========================================================================================
+//BANK
+
+[name=pigrB_1]
+pigrB = pigrB
+
+[name=betaBres_1]
+betaBres = betaBres
+
+[name=deltaB_t1]
+deltaB = deltaB
+
+[name=rD_t1]
+rD = rD
+
+[name=rB1_1]
+rB1 = rB1
+
+[name=aripigrB_1]
+aripigrB = aripigrB
+
+[name=pdebtB_t1]
+pdebtB = pdebtB
+
+[name=betaBreal_1]
+betaBreal = betaBreal
+
+[name=k2_1]
+k2 = k2
+
+[name=omegaB_1]
+omegaB = omegaB
+
+[name=rientrB0, description='Initial setting of net worth of replaced banks to zero']
+rientrB = 0
+
+[name=rientrBB, condition=defB == B, description='Net worth of replaced banks when all have defaulted']
+rientrB = fmax(random.normal(0,1,(B)) + parpatr * mean(price), 0.2)
+
+[name=rientrB, condition=omegaB <= omegaBB && defB != B, description='Net worth of replaced banks when some have defaulted']
+rientrB = random.uniform(0,1,(B)) * min(omegaB[omegaB > omegaBB])
+
+[name=betaBreal]
+betaBreal = betaB - betaBres
+
+[name=betaBres]
+betaBres = betaB
+
+[name=betaBmax]
+betaBmax = betaBup * betaB
+
+[name=gammaB]
+gammaB = omegaB + betaBreal
+
+[name=rB1down, condition = betaBres > 0]
+rB1 = rB1 * (1-adjB*random.uniform(0,1,(B)))
+
+[name=rB1up, condition = betaBres == 0]
+rB1 = rB1 * (1+adjB*random.uniform(0,1,(B)))
+
+[name=m]
+m = M * (omegaB / sum(omegaB))
+
+[name=k1]
+k1 = reg1 * omegaB
+
+[name=k2]
+k2 = reg2 * omegaB + deltaB + m
+
+[name=betaB]
+betaB = fmin(k1, k2)
+
+[name=intCB]
+intCB = rCB * m
+
+
+//Defaulting reset equations
+[name=pigrBdef, condition = omegaB<=omegaBB]
+pigrB = 0
+
+[name=betaBresdef, condition = omegaB<=omegaBB]
+betaBres = 0
+
+[name=deltaBdef, condition = omegaB<=omegaBB]
+deltaB = 0
+
+[name=deltaB_1def, condition = omegaB<=omegaBB]
+deltaB_1 = 0
+
+[name=rDdef, condition = omegaB<=omegaBB]
+rD = rCB
+//rD = mean(rD[omegaB<=omegaBB])
+
+
+[name=rB1def,  condition = omegaB<=omegaBB]
+rB1 = mean(rB1)
+
+[name=dbdef,  condition = omegaB<=omegaBB]
+db = 0.5
+
+[name=aripigrBdef,  condition = omegaB<=omegaBB]
+aripigrB = 0
+
+[name=pdebtBdef,  condition = omegaB<=omegaBB]
+pdebtB = 0
+
+[name=betaBrealdef,  condition = omegaB<=omegaBB]
+betaBreal = 0
+
+[name=k2def,  condition = omegaB<=omegaBB]
+k2 = 0
+
+[name=omegaBdef,  condition = omegaB<=omegaBB]
+omegaB = rientrB
+//end of bank defaulting equations
+
+[name=betaBres_c]
+betaBres = floor((betaBres - betaFeff)*100000000000000)/100000000000000
+
+[name=bank_credit_select]
+b_select = (arange((B))[(betaBres>0)*(b_f_credit_betaFeff==0)*(random.uniform(0,1,(B))<=sogliaC)])
+
+[name=b_select]
+b =  b_select[rB1==min(rB1)][0]
+
+[name=crednet22]
+crednet22 = b_f_credit_betaFeff
+
+[name=crednet22B]
+crednet22 = (ones((F,1))*(ones((B))*(betaBres==0))).T+crednet22*(ones((F,1))*(ones((B))*(betaBres>0))).T
+
+[name=crednet22F]
+crednet22 = (ones((B,1))*(ones((F))*(betaFres==0)))+crednet22*(ones((B,1))*(ones((F))*(betaFres>0)))
+
+[name=contr_crednet]
+contr = ceil(prod(crednet22))
+
+[name=contr_0]
+contr = 0
+
+//Government bonds
+[name = des_pdebtB_0, condition = k2==betaBreal]
+des_pdebtB = 0
+
+[name = des_pdebtB, condition = k2 != betaBreal]
+des_pdebtB = k2 - betaBreal
+
+[name = pdebtB_0]
+pdebtB = 0
+
+[name = pdebtB_1, condition = PDebt > 0 && sum(des_pdebtB) >= PDebt]
+pdebtB = PDebt * (des_pdebtB/sum(des_pdebtB))
+
+[name = pdebtB_2, condition = PDebt > 0 && sum(des_pdebtB) < PDebt]
+pdebtB = des_pdebtB
+
+[name = intPdebtB]
+intPdebtB = rCB * pdebtB
+
+[name = rD_1]
+rD_1 = rD
+
+[name = rDdown, condition = (k2 - betaBreal - pdebtB) > 0]
+rD = rD * (1-adjB*random.uniform(0,1,(B)))
+
+[name = rDup, condition = (k2 - betaBreal - pdebtB) <= 0]
+rD = rD * (1+adjB*random.uniform(0,1,(B)))
+
+[name = rDmin]
+rD = fmin(rD, rCB)
+
+[name=bank_deposit_select]
+bank_deposit_select = random.permutation(arange((B)))
+
+[name=intB]
+intB = nansum((b_f_credit_betaFeff.T*(b_f_credit_rB.T)).T*(omegaF>omegaFF), 1)
+
+[name=badB]
+badB = nansum(((b_f_credit_betaFeff)*(((1-(omegaF + betaFreal)/betaFreal)>1)*(omegaF<=omegaFF)))+(((b_f_credit_betaFeff)*((1-(omegaF + betaFreal)/betaFreal)))*(((1-(omegaF + betaFreal)/betaFreal)<=1)*((1-(omegaF + betaFreal)/betaFreal)>=0))*(omegaF<=omegaFF)),1)
+
+[name=deltaB_1]
+deltaB_1 = deltaB
+
+[name=deltaB]
+deltaB = nansum(b_h_sres, 1)
+
+[name=pigrBlord]
+pigrBlord = intB - deltaB_1 * rD_1 - intCB - badB + intPdebtB
+
+[name=pigrBlord2]
+pigrBlord2 = pigrBlord + aripigrB
+
+[name = pigrButile]
+pigrButile = fmax(pigrBlord2, 0)
+
+[name = aripigrB]
+aripigrB = fmin(pigrBlord2, 0)
+
+[name = pigrBtax]
+pigrBtax = tauB * pigrButile
+
+[name = pigrB]
+pigrB = pigrBlord - pigrBtax
+
+[name = db_1]
+db = db
+
+[name = dbdown, condition = betaBres == 0 && betaBreal > 0]
+db = db * (1-adjB * random.uniform(0,1,(B)))
+
+[name = dbup, condition = (betaBres > 0) || (betaBreal == 0)]
+db = db * (1+adjB * random.uniform(0,1,(B)))
+
+[name = dbmin]
+db = fmin(db, 1)
+
+[name = divB_0]
+divB = 0
+
+[name = divB, condition = pigrB > 0]
+divB = db * pigrB
+
+[name = pigrB_div, condition = pigrB > 0]
+pigrB = (1-db) * pigrB
+
+[name = omegaBB]
+omegaBB = omegaBmin * omegaB
+
+[name = omegaB]
+omegaB = floor((omegaB + pigrB)*100000)/100000
+
+[name = omegaB_patrB, condition = omegaB > parpatr * mean(price)]
+omegaB = (1-taupatrB) * omegaB
+
+[name = omegaB_pm]
+omegaB_pm = omegaB / Pm
+
+//========================================================================================
+//GOVERNMENT
+
+[name=G0]
+G_ = 0
+
+[name=TaxH_0]
+TaxH = 0
+
+[name=TaxH]
+TaxH = tauH * sum(w[unemp==0])
+
+[name=TaxH_1]
+TaxH_1 = TaxH
+
+[name = select_public_workers]
+select_pw = random.permutation(select_pw)
+
+[name = Gw]
+Gw = sum(select_pw*w)
+
+[name = PDef]
+Pdef = Gw + PSALVA + INTPDEBTB - INTCB - TaxH_1 - TaxPatrH - TaxF - TaxPatrF - TaxB - TaxPatrB
+
+[name = PDebt]
+PDebt = PDebt + Pdef
+
+[name = PDebtB]
+PDebtB = sum(pdebtB)
+
+[name = PDebtCB]
+PDebtCB = PDebt - PDebtB
+
+[name = INTCB]
+INTCB = INTCBb
+
+[name = INTPDEBTB]
+INTPDEBTB = sum(intPdebtB)
+
+[name = TaxPatrH]
+TaxPatrH = sum(taupatrH * sres[sres > (parpatr * mean(price))])
+
+[name = TaxF]
+TaxF = sum(pigrFtax)
+
+[name = TaxPatrF]
+TaxPatrF = sum(taupatrF * omegaF[omegaF > (parpatr * mean(price))])
+
+[name = defF]
+defF = sum(omegaF<=omegaFF)
+
+[name = TaxB]
+TaxB = sum(pigrBtax)
+
+[name = TaxPatrB]
+TaxPatrB = sum(taupatrB * omegaB[omegaB > (parpatr * mean(price))])
+
+[name = defB]
+defB = sum(omegaB<=omegaBB)
+
+//========================================================================================
+//CENTRALBANK
+
+[name=M, description='Mismatch between offered and received credit']
+M = fmax(0.5 * M + 0.5 * (BETAFres-BETABres), 0)
+
+//Taylor Rule
+[name=rCB, description='Taylor Rule']
+//rCB = fmax((INFL + 0.5 * (INFL - inflT) + 0 * (ur - unempT)), 0.005)
+rCB = (INFL + 0.5 * (INFL - inflT) + 0.5 * (ur - unempT))
+
+;
+
+STEPS
+//========================================================================================================
+G0
+// FIRM/BANK ReENTRY
+w_1
+//Firm
+rientrF0
+p_1
+
+pigrF_1
+rB_1
+d_1
+aripigrF_1
+scorte_1
+omegaF2_1
+betaF_1
+intF_t1
+lab_1
+omegaF_1
+
+pigrB_1
+betaBres_1
+deltaB_t1
+rD_t1
+rB1_1
+db_1
+aripigrB_1
+pdebtB_t1
+betaBreal_1
+k2_1
+omegaB_1
+
+if (defF == F){
+    rientrFF
+    pFF
+    }
+if ((defF > 0 && defF < F)==1){
+    rientrF
+    pF
+    }
+//Bank
+rientrB0
+
+if (defB == B){
+    rientrBB
+    }
+if ((defB > 0 && defB < B)==1){
+    rientrB
+    }
+
+//Gov aggregation
+RIENTRF
+RIENTRB
+RIENTR
+DIV1_1
+DIV1
+PSALVA0
+PSALVA
+DIV1H
+
+//One-to-one replacement of defaulted agents
+//Firms
+if (defF > 0){
+    pigrFdef
+    rBdef
+    betaFresdef
+    betaFrealdef
+    ydef
+    yresdef
+    ddef
+    aripigrFdef
+    scortedef
+    omegaF2def
+    betaFdef
+    intFdef
+    labdef
+    omegaFdef
+    }
+//BanksF
+if (defB > 0){
+    pigrBdef
+    betaBresdef
+    deltaBdef
+    deltaB_1def
+    rDdef
+    rB1def
+    dbdef
+    aripigrBdef
+    pdebtBdef
+    betaBrealdef
+    k2def
+    omegaBdef
+    }
+
+
+//Firm Credit Demand
+y_1
+levatup
+levatdown
+
+levatmin
+minbetaF
+betaF
+rB2
+betaFres
+
+//Bank Interest Rate Setting
+rB1down
+rB1up
+
+//Bank Credit Supply
+m
+k1
+k2
+betaB
+intCB
+betaBres
+betaBmax
+INTCBb
+
+BETAF
+BETAB
+
+BETAFres
+BETABres
+
+b_f_credit_betaFeff_nan
+b_f_credit_rB_nan
+
+contr_0
+//Credit Matching
+while (sum(betaFres) > 0 && sum(betaBres) && contr == 0){
+    firm_credit_select
+    for (f,firm_credit_select){
+        bank_credit_select[f]
+        if (size(b_select) != 0){
+            b_select[b_select]
+            betaFeffmin[f][b]
+            betaFres_c[f]
+            betaBres_c[f][b]
+            b_f_credit_betaFeff[b][f]
+            b_f_credit_rB[b][f]
+            }
+        }
+    crednet22
+    crednet22B
+    crednet22F
+    contr_crednet
+    }
+
+BETAFres
+BETABres
+betaFreal
+gammaF
+betaBreal
+gammaB
+unemp_1
+lab_0
+labnet_0
+gammaFres
+TaxH_1
+TaxH_0
+select_public_workers
+unemp_pw
+Gw
+
+//Labor Matching
+contr_0
+while (sum(unemp) > 0 && (max(gammaFres) > min(w[unemp==1], initial=inf))){
+    firm_labor_select
+    for (f,firm_labor_select){
+        household_labor_select[f]
+        if (size(h_select_l) != 0){
+            h_select_l[h_select_l]
+            lab_L[f][h]
+            labnet_L[f][h]
+            unemp_L[f][h]
+            gammaFres_L[f][h]
+            }
+        }
+    }
+
+OMEGAH
+cash
+weff
+weff_0
+TaxH
+c
+wup
+wdown
+wmin
+GAMMAFRES
+UNEMP
+ur
+y
+Y
+wb
+intF_1
+intF
+rB
+pup
+pdown
+pmin
+yres_y
+YRES
+qeff_0
+revenue_0
+cres
+CRES
+C
+
+//Good matching
+contr_0
+while (sum(yres) > 0 && sum(cres) > 0 && contr == 0){
+    household_good_select
+    for (h,household_good_select){
+        firm_good_select[h]
+        if (size(f_select) != 0){
+            f_select[f_select]
+            yres_g[f][h]
+            qeff_g[f][h]
+            revenue_g[f][h]
+            cres_g[f][h]
+            }
+        }
+    contrF_g_minmax
+    }
+
+
+CRES
+YRES
+
+scorte
+SCORTE
+spesa
+s
+SPESA
+PDef
+PDebt
+PDebtB
+PDebtCB
+INTCB
+des_pdebtB_0
+des_pdebtB
+pdebtB_0
+if (PDebt > 0 && sum(des_pdebtB)>=PDebt){
+    pdebtB_1
+    }
+if (PDebt > 0 && sum(des_pdebtB)<PDebt){
+    pdebtB_2
+    }
+intPdebtB
+INTPDEBTB
+rD_1
+rDdown
+rDup
+rDmin
+rD1down
+rD1up
+sres
+sres_Tax
+TaxPatrH
+rD1res
+b_h_sres_nan
+b_h_rD_nan
+
+//Deposit Matching
+contr_0
+while (sum(sres)>0 && contr == 0){
+    bank_deposit_select
+    for (b,bank_deposit_select){
+        household_deposit_select[b]
+        if (size(h_select_d) != 0){
+            h_select_d[h_select_d]
+            b_h_sres[b][h]
+            b_h_rD[b][h]
+            sres_d[b][h]
+            }
+        }
+    contrH_d_minmax
+    }
+cash_sres
+
+revenue
+Ptot
+Ptot2
+Ptot3
+Pm_1
+Pm
+
+pigrFlord
+pigrFlord2
+pigrFutile
+aripigrF
+pigrFtax
+pigrF
+pigrF2
+
+TaxF
+
+dup
+ddown
+
+divF_0
+divF
+pigrF_divF
+omegaFF
+omegaF2
+omegaF
+
+omegaF_patrF
+
+defF
+
+intB
+badB
+deltaB_1
+deltaB
+pigrBlord
+pigrBlord2
+pigrButile
+aripigrB
+pigrBtax
+pigrB
+
+TaxB
+dbdown
+dbup
+dbmin
+divB_0
+divB
+pigrB_div
+omegaBB
+omegaB
+omegaB_patrB
+defB
+
+deltaH
+intH
+omegaH_1
+omegaH
+
+TaxPatrF
+TaxPatrB
+DIV
+OMEGAF
+OMEGAF2
+OMEGAF0
+OMEGAB
+OMEGAB0
+OMEGAH
+DELTAH
+DELTAB
+BETABREAL
+BETAFREAL
+BADB
+GAMMAF
+GAMMAB
+PIGRF
+PIGRF2
+PIGRB
+LAMBDAF
+LAMBDAB
+LEVAT
+RB1
+RB2
+Wtot
+Wm
+Wm0_1
+Wm0
+INTF
+INTB
+rBm
+INFL
+INFLW0
+
+OMEGAH_PM
+OMEGAF_PM
+OMEGAB_PM
+
+omegaH_pm
+omegaF_pm
+omegaB_pm
+
+w_Pm
+betaFreal_Pm
+deltaH_Pm
+M
+//rCB
+
+//shock_w_up
+
+;
+
+
