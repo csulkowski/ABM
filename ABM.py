@@ -70,6 +70,15 @@ def replace_elem(s, elem, elem_):
         i = i + 1
     return s
 
+def run_parallel(arg):
+    from compiledModel import run
+    iterations = arg[0]
+    params = arg[1]
+    verbose = arg[2]
+    dbase = run(iterations, params, verbose)
+    dbase = ABM.dseries(dbase[0], dbase[1])
+    return dbase
+
 class ABM:
     def __init__(self, modfile, cache=False):
         # Initialize variables necessary regardless of compilation
@@ -84,7 +93,7 @@ class ABM:
         block_list_arguments = ['SETTINGS', 'AGENTS', 'ENDO_VAR', 'ENDO_MAT', 'ENDO_INIT', 'EXO_PARAM', 'MAT_TYPE', 'ENDO_EQ', 'STEPS']
         default_agent_options = ['depend', 'num', 'tag', 'iterator', 'group']
         default_eq_options = ['equation', 'condition']
-        default_settings_options = ['float_isclose', 'numba']
+        default_settings_options = ['float_isclose', 'numba', 'debug_output']
         # The list below contains the numpy functions which are supported.
         # Other functions may be added at the user's own risk
         self.supported_numpy_functions = ['log', 'exp', 'max', 'fmax', 'min', 'fmin', 'sum', 'mean', 'std', 'random.randint',
@@ -151,6 +160,8 @@ class ABM:
                         parsed_settings['float_isclose'] = '0'
                     if option == 'numba':
                         parsed_settings['numba'] = 'False'
+                    if option == 'debug_output':
+                        parsed_settings['debug_output'] = 'False'
                 for option in unparsed_settings:
                     option_split = option.split('=')
                     if len(option_split) != 2:
@@ -655,6 +666,10 @@ class ABM:
                 lhs = self._get_formula(lhs, False, lag=0, iterators=iterators)
                 rhs = self._get_formula(rhs, True, lag=0, iterators=iterators)
                 compiled_file.append(whiteSpaceCounter*whiteSpace+lhs+' = '+rhs+'\n')
+                if self.blocks['SETTINGS']['debug_output'] == 'True':
+                    compiled_file.append(whiteSpaceCounter*whiteSpace+'if t == t:\n')
+                    compiled_file.append((whiteSpaceCounter+1)*whiteSpace+'print(\''+str(step)+'\')\n')
+                    compiled_file.append((whiteSpaceCounter+1)*whiteSpace+'print('+lhs+')\n')
 
             elif step == '}':
                 whiteSpaceCounter = whiteSpaceCounter-1
@@ -878,13 +893,17 @@ class ABM:
                     plt.clf()
         return dbase
 
-    def estimate(self, dbase, initial_params, estimated_vars, iterations = 10, batch = 10, start = 0, step=0.001):
+    def estimate(self, dbase, initial_params, estimated_vars, iterations = 10, batch = 10, start = 0, step=0.001, parallel = False):
+
+        if parallel == True:
+            import multiprocessing as mp
+            pool = mp.Pool(mp.cpu_count())
         run = 1000
         for n in dbase.names:
-           dbase[n] = np.mean(dbase[n], axis=1).reshape((run, 1))
+            dbase[n] = np.mean(dbase[n], axis=1).reshape((run, 1))
         for n in dbase.names:
-           if n not in estimated_vars:
-               dbase.pop(n)
+            if n not in estimated_vars:
+                dbase.pop(n)
                
         param_names = initial_params.keys()
         old_loglik = -np.inf
@@ -896,16 +915,27 @@ class ABM:
                 params_eval[p] = np.random.normal(params_eval[p], step)
             for p in (param_names):
                 self.params[self.sorted_exo_param.index(p)] = params_eval[p]
+            if parallel == True:
+                args = [[run, self.params, 0] for b in range(batch)]
+                with mp.Pool() as pool:
+                    output = pool.map(run_parallel, args)
             for b in range(batch):
                 if b == 0:
-                    dbase_new = self.run(run, params = self.params, verbose=0)
+                    if parallel == True:
+                        dbase_new = output[0]
+                    else:
+	                    dbase_new = self.run(run, params = self.params)
+                    
                     for n in dbase_new.names:
-                        if n not in estimated_vars:
-                            dbase_new.pop(n)
+	                    if n not in estimated_vars:
+	                        dbase_new.pop(n)
                     for n in estimated_vars:
                         dbase_new[n] = np.mean(dbase_new[n], axis=1).reshape((run, 1))
                 else:
-                    dbase_tmp = self.run(5, params = self.params)
+                    if parallel == True:
+                        dbase_tmp = output[b]
+                    else:
+                        dbase_tmp = self.run(run, params = self.params)
                     for n in estimated_vars:
                         dbase_new[n] = np.concatenate((dbase_new[n], np.mean(dbase_tmp[n], axis=1).reshape((run, 1))), axis=1)
             self.params_prev = self.params
@@ -1056,8 +1086,8 @@ class dseries:
 
 if __name__ == "__main__":
 
-    model = ABM('model.txt', cache=False)
-
+    model = ABM('model.txt', cache=True)
+    model.run(1, plot=False, verbose = 0)
     model.plot_normalize({'BADB':'Pm',
                       'BETAB':'Pm',
                       'BETABREAL':'Pm',
@@ -1107,10 +1137,10 @@ if __name__ == "__main__":
                       'Wtot':'Pm'})
                       
     iterations = 1000
-    dbase = model.run(iterations, plot=False, verbose = True)
-    dbase.save('dbase')
-    #dbase = dseries([],[])
-    #dbase.load('dbase.dat')
+    #dbase = model.run(iterations, plot=False, verbose = True)
+    #dbase.save('dbase')
+    dbase = dseries([],[])
+    dbase.load('dbase.dat')
     params = {'adjF': 0.1,
               'adjFprice': 0.1,
               'adjFleva': 0.1,
@@ -1119,5 +1149,5 @@ if __name__ == "__main__":
               }
     estimated_vars = ['w', 'rD1', 'levat', 'price', 'd', 'rB1', 'db', 'rD']
     params = model.estimate(dbase, initial_params=params, estimated_vars=estimated_vars, 
-                            iterations = 1000, start = 0)
+                            iterations = 1000, start = 0, parallel = True)
 

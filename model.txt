@@ -1,7 +1,8 @@
 // Macro Modfile
 SETTINGS
 float_isclose = 1e9
-numba = False
+numba = True
+debug_output = False
 ;
 
 AGENTS
@@ -429,6 +430,9 @@ Pm_1 = Pm
 [name = Pm]
 Pm = Ptot / sum(qeff)
 
+[name = Pm_prev]
+Pm = Pm_1
+
 [name = DIV]
 DIV = sum(divF) + sum(divB)
 
@@ -482,6 +486,9 @@ PIGRB = sum(pigrBlord)
 
 [name = LAMBDAF]
 LAMBDAF = BETAFREAL / OMEGAF0
+
+[name = LAMBDAF_nan]
+LAMBDAF = nan
 
 [name = LAMBDAB]
 LAMBDAB = BETAFREAL / OMEGAB0
@@ -1545,7 +1552,12 @@ Ptot
 Ptot2
 Ptot3
 Pm_1
-Pm
+if (sum(qeff)>0){
+    Pm
+    }
+if (sum(qeff)==0){
+    Pm_prev
+    }
 
 pigrFlord
 pigrFlord2
@@ -1618,7 +1630,12 @@ GAMMAB
 PIGRF
 PIGRF2
 PIGRB
-LAMBDAF
+if (OMEGAF0>0){
+    LAMBDAF
+    }
+if (OMEGAF0==0){
+    LAMBDAF_nan
+    }
 if (OMEGAB0>0){
     LAMBDAB
     }
