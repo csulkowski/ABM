@@ -493,7 +493,7 @@ class ABM:
         # Start writing model function
         if self.blocks['SETTINGS']['numba'] == 'True':
             compiled_file.append('@njit(cache = True)\n')
-        compiled_file.append('def run(iterations):\n')
+        compiled_file.append('def run(iterations, params, verbose):\n')
 
         # Sort agents to make output consistent and more organized
         sorted_agents = list(self.blocks['AGENTS'].keys())
@@ -536,14 +536,21 @@ class ABM:
                 compiled_file.append('    ' + i + ' = ' + str(val) + '\n')
 
         # Sort exo_param to make output consistent and more organized
-        sorted_exo_param = list(self.blocks['EXO_PARAM'].keys())
-        sorted_exo_param.sort()
+        self.sorted_exo_param = list(self.blocks['EXO_PARAM'].keys())
+        self.sorted_exo_param.sort()
 
         # 3. Initialize exogenous parameters
-        for p in sorted_exo_param:
+        self.params = []
+        for p_i, p in enumerate(self.sorted_exo_param):
             val = self._get_formula(self.blocks['EXO_PARAM'][p], True, init=True)
-            compiled_file.append('    ' + p + ' = ' + str(val) + '\n')
-
+            if '.' in val:
+                self.params.append(float(val))
+            else:
+                self.params.append(int(val))
+            compiled_file.append('    #' + p + ' = '+val+'\n')
+            compiled_file.append('    ' + p + ' = params['+str(p_i)+']\n')
+        self.params = np.array(self.params)
+        
         # Sort endo_mat to make output consistent and more organized
         sorted_endo_mat = list(self.blocks['ENDO_MAT'].keys())
         sorted_endo_mat.sort()
@@ -589,7 +596,8 @@ class ABM:
         compiled_file.append('    for t in range(iterations):\n')
         compiled_file.append('        if t == 0:\n')
         compiled_file.append('            continue\n')
-        compiled_file.append('        print(t)\n')
+        compiled_file.append('        if verbose == 1:\n')
+        compiled_file.append('            print(t)\n')
 
         whiteSpaceCounter = 2
         whiteSpace = '    '
@@ -843,9 +851,11 @@ class ABM:
     def plot_normalize(self, normalization_input):
         self.plot_normalization = normalization_input
 
-    def run(self, iterations, plot=False):
+    def run(self, iterations, plot=False, params = [], verbose = 0):
         from compiledModel import run
-        dbase = run(iterations)
+        if params == []:
+            params = self.params
+        dbase = run(iterations, params, verbose)
         dbase = dseries(dbase[0], dbase[1])
         if plot == True:
             import matplotlib.pyplot as plt
@@ -867,6 +877,75 @@ class ABM:
                     plt.savefig(folder_to_save_plots + n + '.png')
                     plt.clf()
         return dbase
+
+    def estimate(self, dbase, initial_params, estimated_vars, iterations = 10, batch = 10, start = 0, step=0.001):
+        run = 1000
+        for n in dbase.names:
+           dbase[n] = np.mean(dbase[n], axis=1).reshape((run, 1))
+        for n in dbase.names:
+           if n not in estimated_vars:
+               dbase.pop(n)
+               
+        param_names = initial_params.keys()
+        old_loglik = -np.inf
+        params_prev = initial_params
+        for t in range(iterations):
+            print(t)
+            params_eval = params_prev
+            for p in (param_names):
+                params_eval[p] = np.random.normal(params_eval[p], step)
+            for p in (param_names):
+                self.params[self.sorted_exo_param.index(p)] = params_eval[p]
+            for b in range(batch):
+                if b == 0:
+                    dbase_new = self.run(run, params = self.params, verbose=0)
+                    for n in dbase_new.names:
+                        if n not in estimated_vars:
+                            dbase_new.pop(n)
+                    for n in estimated_vars:
+                        dbase_new[n] = np.mean(dbase_new[n], axis=1).reshape((run, 1))
+                else:
+                    dbase_tmp = self.run(5, params = self.params)
+                    for n in estimated_vars:
+                        dbase_new[n] = np.concatenate((dbase_new[n], np.mean(dbase_tmp[n], axis=1).reshape((run, 1))), axis=1)
+            self.params_prev = self.params
+            new_loglik = 0
+            for n in estimated_vars:
+                new_loglik = new_loglik + self.SMLE(dbase[n], dbase_new[n], batch)
+            print(new_loglik)
+            print(params_eval)
+            if new_loglik>old_loglik:
+                params_prev = params_eval
+            else:
+                u = np.random.uniform(0,1)
+                if u < np.exp(new_loglik-old_loglik):
+                    params_prev = params_eval
+                else:             
+                    params_prev = params_prev
+            
+            
+        quit()
+
+    def SMLE(self, y, yhat, batch):
+        def Kn(ye, eta, N):
+            return K(ye/np.sqrt(eta), eta, N)/np.sqrt(eta)
+
+        def K(psi, eta, N):
+            return (1/(np.sqrt(2*np.pi)*np.std(psi))*N)*np.exp(-(abs(psi)**2)/(2*(np.std(psi)**2)))
+        def likelihood(pt):
+            return np.sum(np.log(pt))
+        N = batch
+        #print(yhat.shape)
+        sigmahat = np.std(yhat, axis=0)
+        #print(sigmahat)
+        #print(sigmahat)
+        eta = ((4/(3*N))**(1/5))*sigmahat
+        #print(eta)
+        #quit()
+        #eta = eta.reshape(len(eta),1, 1)
+        ye = yhat - y#.reshape((len(y),1, 1))
+        pt = 1/N * np.sum(Kn(ye, eta, N), axis=1)
+        return likelihood(pt)
 
     class numba_functions:
         def __init__(self):
@@ -975,10 +1054,9 @@ class dseries:
             self[n] = np.concatenate((self[n], other[n]), axis=0)
         return self
 
-
 if __name__ == "__main__":
 
-    model = ABM('model.txt', cache=True)
+    model = ABM('model.txt', cache=False)
 
     model.plot_normalize({'BADB':'Pm',
                       'BETAB':'Pm',
@@ -1028,15 +1106,18 @@ if __name__ == "__main__":
                       'Wm0':'Pm',
                       'Wtot':'Pm'})
                       
-    iterations = 10
-    dbase = model.run(iterations, plot=True)
+    iterations = 1000
+    dbase = model.run(iterations, plot=False, verbose = True)
     dbase.save('dbase')
-    
-    params = {'adjF': '0.1',
-              'adjFprice': '0.1',
-              'adjFleva': '0.1',
-              'adjB': '0.1',
-              'adjH': '0.1',
+    #dbase = dseries([],[])
+    #dbase.load('dbase.dat')
+    params = {'adjF': 0.1,
+              'adjFprice': 0.1,
+              'adjFleva': 0.1,
+              'adjB': 0.1,
+              'adjH': 0.1,
               }
-    param = model.estimate(dbase, initial_params=params, iterations = 10, start = 0)
+    estimated_vars = ['w', 'rD1', 'levat', 'price', 'd', 'rB1', 'db', 'rD']
+    params = model.estimate(dbase, initial_params=params, estimated_vars=estimated_vars, 
+                            iterations = 1000, start = 0)
 

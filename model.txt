@@ -1,7 +1,7 @@
 // Macro Modfile
 SETTINGS
 float_isclose = 1e9
-numba = True
+numba = False
 ;
 
 AGENTS
@@ -204,7 +204,7 @@ b_f_credit_rB = zeros((B,F))
 crednet22 = zeros((B,F))
 b_h_sres = zeros((B,H))
 b_h_rD = zeros((B,H))
-select_pw = concatenate((zeros((H-pw)), ones((pw))))
+select_pw = concatenate((zeros((H-int_(pw))), ones((int_(pw)))))
 ;
 
 MAT_TYPE
@@ -282,14 +282,14 @@ EXO_PARAM
 t_test = 1
 wagemin = 0.5
 phi = 3
-phi1 = phi
+phi1 = 3
 c1 = 0.8
 c2 = 0.3
 sogliaG = 0.2
 sogliaL = 0.2
 sogliaC = 0.2
 sogliaD = 0.2
-pw = int_(0.33*H)
+pw = 165
 tauF = 0.3
 tauB = 0.3
 tauH = 0.3
