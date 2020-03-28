@@ -76,7 +76,7 @@ def run_parallel(arg):
     params = arg[1]
     verbose = arg[2]
     dbase = run(iterations, params, verbose)
-    dbase = ABM.dseries(dbase[0], dbase[1])
+    dbase = dseries(dbase[0], dbase[1])
     return dbase
 
 class ABM:
