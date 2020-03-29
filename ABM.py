@@ -893,12 +893,12 @@ class ABM:
                     plt.clf()
         return dbase
 
-    def estimate(self, dbase, initial_params, estimated_vars, iterations = 10, batch = 10, start = 0, step=0.001, parallel = False):
+    def estimate(self, dbase, initial_params, estimated_vars, iterations = 1000, batch = 10, start = 0, step=0.001, parallel = False):
 
         if parallel == True:
             import multiprocessing as mp
             pool = mp.Pool(mp.cpu_count())
-        run = 1000
+        run = 100
         for n in dbase.names:
             dbase[n] = np.mean(dbase[n], axis=1).reshape((run, 1))
         for n in dbase.names:
@@ -1136,11 +1136,11 @@ if __name__ == "__main__":
                       'Wm0':'Pm',
                       'Wtot':'Pm'})
                       
-    iterations = 1000
-    #dbase = model.run(iterations, plot=False, verbose = True)
+    iterations = 100
+    dbase = model.run(iterations, plot=False, verbose = 0)
     #dbase.save('dbase')
-    dbase = dseries([],[])
-    dbase.load('dbase.dat')
+    #dbase = dseries([],[])
+    #dbase.load('dbase.dat')
     params = {'adjF': 0.1,
               'adjFprice': 0.1,
               'adjFleva': 0.1,
@@ -1149,5 +1149,5 @@ if __name__ == "__main__":
               }
     estimated_vars = ['w', 'rD1', 'levat', 'price', 'd', 'rB1', 'db', 'rD']
     params = model.estimate(dbase, initial_params=params, estimated_vars=estimated_vars, 
-                            iterations = 1000, start = 0, parallel = True)
+                            iterations = 10000, start = 0, parallel = True)
 
