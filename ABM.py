@@ -894,20 +894,23 @@ class ABM:
         return dbase
 
     def estimate(self, dbase, initial_params, estimated_vars, iterations = 1000, batch = 10, start = 0, step=0.001, parallel = False):
-
+        import matplotlib.pyplot as plt
         if parallel == True:
             import multiprocessing as mp
             pool = mp.Pool(mp.cpu_count())
-        run = 100
+        run = 10
         for n in dbase.names:
             dbase[n] = np.mean(dbase[n], axis=1).reshape((run, 1))
         for n in dbase.names:
             if n not in estimated_vars:
                 dbase.pop(n)
                
-        param_names = initial_params.keys()
+        param_names = list(initial_params.keys())
         old_loglik = -np.inf
         params_prev = initial_params
+
+        all_param = []
+        all_SMLE = []
         for t in range(iterations):
             print(t)
             params_eval = params_prev
@@ -953,8 +956,31 @@ class ABM:
                 else:             
                     params_prev = params_prev
             
+
+            all_param.append(params_eval)
+            all_SMLE.append(new_loglik)
+            if t % 100 == 0 and t != 0:
+                parsed_all_param = {}
+                for p in param_names:
+                    parsed_param = []
+                    for params in all_param:
+                        parsed_param.append(params[p])
+                    parsed_all_param[p] = parsed_param
+                fig, axs = plt.subplots(len(param_names), len(param_names), figsize=(15,15))
+                cmap = plt.get_cmap('RdYlGn')
+                colors = cmap((np.array(all_SMLE) - min(all_SMLE))/ np.array(all_SMLE).ptp())
+                for y, p_y in enumerate(param_names):
+                    for x, p_x in enumerate(param_names):
+                        axs[x,y].scatter(parsed_all_param[p_x], parsed_all_param[p_y], c = colors, cmap = cmap)
+                for y_i, y in enumerate(axs):
+                    for x_i, x in enumerate(y):
+                        x.set(xlabel=param_names[x_i], ylabel=param_names[y_i])
+                for ax in axs.flat:
+                    ax.label_outer()
+                plt.savefig('metropolis_res.png')
+                plt.clf()
             
-        quit()
+        return params_prev
 
     def SMLE(self, y, yhat, batch):
         def Kn(ye, eta, N):
@@ -1136,7 +1162,7 @@ if __name__ == "__main__":
                       'Wm0':'Pm',
                       'Wtot':'Pm'})
                       
-    iterations = 100
+    iterations = 10
     dbase = model.run(iterations, plot=False, verbose = 0)
     #dbase.save('dbase')
     #dbase = dseries([],[])
