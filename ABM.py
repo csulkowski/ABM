@@ -17,6 +17,8 @@ class ABM:
     cache : bool
         True will overwrite any previously generated compiled model.
         False will not overwrite, but will still preprocess the model.
+        Note that if the compiledModel file does not exist, it will be 
+        built regardless.
     
     Attributes
     ----------
@@ -30,7 +32,7 @@ class ABM:
         Includes all the numpy functions allowed during model compilation.
         Most functions can be freely added in principle, however, others may require
         additional parsing. Modify with care.
-        If a variable in the model is named exactly the same as any variable in this list,
+        If a variable in the model is named exactly the same as any function in this list,
         the preprocessor will throw an error.
         
     supported_numpy_arguments: list of str
@@ -62,12 +64,12 @@ class ABM:
     plot_normalize(normalization_input={})
         Sets variables to be normalized during plotting and on which variable they should be normalized.
         Example: {'OMEGAH':'Pm'}
-            The variable OMEGAH will be normalized using the variables of the variable Pm
+            The variable OMEGAH will be normalized using the values of the variable Pm
             
     numba_functions()
         Class containing user made functions. Main use is to permit numba compilation with
         custom built versions of incompatible numpy functions. 
-        Functions can also be built for use in the model.
+        Functions can also be specifically built for use in the model.
     
     """
     def __init__(self, modfile, cache=False):
@@ -83,7 +85,7 @@ class ABM:
         block_list_arguments = ['SETTINGS', 'AGENTS', 'ENDO_VAR', 'ENDO_MAT', 'ENDO_INIT', 'EXO_PARAM', 'MAT_TYPE', 'ENDO_EQ', 'STEPS']
         default_agent_options = ['depend', 'num', 'tag', 'iterator', 'group']
         default_eq_options = ['equation', 'condition']
-        default_settings_options = ['float_isclose', 'numba', 'debug_output']
+        default_settings_options = ['isclose', 'numba', 'show_values']
         # The list below contains the numpy functions which are supported.
         # Other functions may be added at the user's own risk
         self.supported_numpy_functions = ['log', 'exp', 'max', 'fmax', 'min', 'fmin', 'sum', 'mean', 'std', 'random.randint',
@@ -146,12 +148,12 @@ class ABM:
                 unparsed_settings = self.blocks[b]
                 parsed_settings = {}
                 for option in default_settings_options:
-                    if option == 'float_isclose':
-                        parsed_settings['float_isclose'] = '0'
+                    if option == 'isclose':
+                        parsed_settings['isclose'] = '0'
                     if option == 'numba':
                         parsed_settings['numba'] = 'False'
-                    if option == 'debug_output':
-                        parsed_settings['debug_output'] = 'False'
+                    if option == 'show_values':
+                        parsed_settings['show_values'] = 'False'
                 for option in unparsed_settings:
                     option_split = option.split('=')
                     if len(option_split) != 2:
@@ -463,14 +465,6 @@ class ABM:
                                             continue
                                         else:
                                             raise ValueError('Variable \"'+c+'\" in statement \"'+eq_name+'\" is not declared')
-                                #elif statement == 'while' or statement == 'if':
-                                #    condition = re.search('\(.*\)', eq_name).group(0)[1:-1]
-                                #    condition = re.split('&&|\|\|', condition)
-                                #    for c in condition:
-                                #        if c.count('(') != c.count(')'):
-                                #            raise ValueError('Syntax Error: Parenthesis mismatch in condition \"'+c+'\" of statement \"'+eq_name+'\"')
-                                #        if c.count('[') != c.count(']'):
-                                #           raise ValueError('Syntax Error: Bracket mismatch in condition \"'+c+'\" of statement \"'+eq_name+'\"')
                             elif statement == 'break':
                                 continue
                             elif statement == 'quit':
@@ -500,8 +494,8 @@ class ABM:
 
         #Set settings
         compiled_file.append('    # SET SETTINGS\n')
-        if self.blocks['SETTINGS']['float_isclose'] != '0':
-            compiled_file.append('    numpy_prec = '+self.blocks['SETTINGS']['float_isclose']+'\n')
+        if self.blocks['SETTINGS']['isclose'] != '0':
+            compiled_file.append('    numpy_prec = '+self.blocks['SETTINGS']['isclose']+'\n')
 
         # Initialize database
         compiled_file.append('    # BUILDING DATABASES\n')
@@ -654,7 +648,7 @@ class ABM:
                 lhs = self._get_formula(lhs, False, lag=0, iterators=iterators)
                 rhs = self._get_formula(rhs, True, lag=0, iterators=iterators)
                 compiled_file.append(whiteSpaceCounter*whiteSpace+lhs+' = '+rhs+'\n')
-                if self.blocks['SETTINGS']['debug_output'] == 'True':
+                if self.blocks['SETTINGS']['show_values'] == 'True':
                     compiled_file.append(whiteSpaceCounter*whiteSpace+'if t == t:\n')
                     compiled_file.append((whiteSpaceCounter+1)*whiteSpace+'print(\''+str(step)+'\')\n')
                     compiled_file.append((whiteSpaceCounter+1)*whiteSpace+'print('+lhs+')\n')
@@ -888,7 +882,7 @@ class ABM:
             Parametrization to use in the model. Default will use parametrization currently saved in the preprocessor object.
             
         verbose : int
-            1 will output values of the variables as the model runs. For debugging purposes.
+            1 will print the current iteration during simulation.
             
         Returns
         ----------

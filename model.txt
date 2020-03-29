@@ -1,11 +1,67 @@
 // Macro Modfile
+//This model file structure is composed of blocks
+//SETTINGS - Sets model wide options
+//AGENTS - Declares agents
+//ENDO_VAR - Declares endogenous variables
+//ENDO_MAT - Declares matrix (Used in this case to store agent interactions)
+//MAT_TYPE - Declares matrix variable type
+//ENDO_INIT - Declares initial values of endogenous variables
+//EXO_PARAM - Declares model parameters
+//ENDO_EQ - Declares model equations
+//STEPS - Declares order of equations in the model and conditional loops
+//
+//A block is declared like so:
+//  BLOCK_NAME
+//  
+//
+//  ;
+
+
+//-------------------------SETTINGS---------------------------------------------
 SETTINGS
-float_isclose = 1e9
-numba = True
-debug_output = False
+
+//Settings block contains options related to the model as a whole
+//  Parameters:
+//  ----------
+//  isclose : float
+//      A value above 0 will constrain the floating point precision of the model
+//      to this value.
+//      Note that this significantly slows down model simulation.
+//
+//  numba : bool
+//      True will tell the preprocessor to include numba compilation in the model
+//
+//  show_values : bool
+//      True will output values of the variables as the model runs. For debugging purposes.
+
+float_isclose = 0
+numba = False
+show_values = False
 ;
 
+//-------------------------AGENTS-----------------------------------------------
 AGENTS
+
+//Agents block declares the agents in the model and additional options
+//  Input:
+//  ----------
+//  'NAME OF AGENT' = [depend = None, num = 1, tag = N, iterator = n, group = n_select]
+//
+//  Parameters:
+//  ----------
+//  depend : str
+//      Determines the hierarchical level of the agent relative to another. NOT YET IMPLEMENTED
+//  num : int
+//      Sets how many agents are in the model
+//
+//  tag : str
+//      Only used currently to refer to the number of agents of this class
+//      in the model.
+//  iterator : str
+//      Variable to be used when iterating over members of this agent class
+//  group : str
+//      Variable/s to be used when indexing a variable over multiple members of an agent class
+
 WORLD = [depend = None, num = 1, tag = W, iterator = wo]
 NATIONAL = [depend = WORLD, num = 1, tag = N, iterator = n]
 HOUSEHOLD = [depend = NATIONAL, num = 500, tag = H, iterator = h, group = household_good_select, h_select_l, h_select_d]
@@ -17,6 +73,18 @@ CENTRALBANK = [depend = NATIONAL, num = 1, tag = CB, iterator = cb]
 
 //-------------------------ENDO VAR---------------------------------------------
 ENDO_VAR
+
+//Endo_var block declares endogenous variables and to which agent they belong
+//
+//  INPUT:
+//  ----------
+//  AGENT1
+//  VAR_NAME_1
+//
+//  AGENT2
+//  VAR_NAME_2
+
+
 WORLD
 
 NATIONAL
@@ -200,6 +268,15 @@ M
 ;
 
 ENDO_MAT
+
+//Endo_mat block declares matrix used independently of endogenous variables
+//Declaration generally follows the numpy format without np. 
+//To refer to the number of agents in an agent class, use its 'tag'
+//  Example:
+//  ----------
+//  'var_name' = zeros((tag1,tag2))
+//
+
 b_f_credit_betaFeff = zeros((B,F))
 b_f_credit_rB = zeros((B,F))
 crednet22 = zeros((B,F))
@@ -209,10 +286,24 @@ select_pw = concatenate((zeros((H-int_(pw))), ones((int_(pw)))))
 ;
 
 MAT_TYPE
+
+//Mat_type block declares matrix types if needed.
+//  Example:
+//  ----------
+//  'var_name' = float64
+
+
 ;
 
 //-------------------------ENDO INIT---------------------------------------------
 ENDO_INIT
+
+//Endo_init block declares the initial values of endogenous variables.
+//  Input:
+//  ----------
+//  'var_name' = 2+2
+//
+
 //WORLD
 
 //NATIONAL
@@ -322,9 +413,47 @@ contr = 0
 ;
 
 
-//-------------------------------------------------------------
-//DECLARE ENDOGENOUS EQUATIONS
+//-------------------------ENDO EQ---------------------------------------------
 ENDO_EQ
+
+//Endo_eq block declares the equations in the model. Numpy functions can be called (without np. in front however)
+//if they are supported in ABM.py
+//  Input:
+//  ----------
+//  [name=NAME OF EQUATION, condition=1>0]
+//  var_name = 1+1
+//
+//
+//  Parameters:
+//  ----------
+//  name : str
+//      Declares the name of the equation as it will be used in the STEPS block.
+//
+//  condition : str
+//      Condition for which this equation is evaluated. If the condition involves a variable with many values,
+//      say the wealth of households, the equation will only apply to those elements where the condition is true, and 
+//      those where it is false will not change.
+//      AND and OR operators are represented as && and || respectively.
+//      
+//
+//  Example:
+//  ----------
+//  [name=NAME_OF_EQUATION', condition=1>0]
+//  var_name = 1+1
+//
+//  In the equation above, the variable var_name will equal 2 if 1>0 when NAME_OF_EQUATION of called.
+//
+//  [name=NAME_OF_EQUATION', condition=omegaB>0]
+//  OMEGA = 1+1
+//
+//  In the equation above, the agents with an omegaB greater than 0 will equal 2. The omegaB of other agents is left untouched.
+//
+//  [name=NAME_OF_EQUATION']
+//  OMEGAB = sum(omegaB)
+//
+//  In the equation above, OMEGAB is now equal to the sum of all omegaB (sum is a numpy function, however, note the lack of np.)
+
+
 //========================================================================================
 //WORLD
 
@@ -355,19 +484,19 @@ b_h_rD = zeros((B,H))
 //========================================================================================
 //NATIONAL
 
-[name=RIENTR, description='Sum of all re-entries']
+[name=RIENTR]
 RIENTR = sum(rientrF) + sum(rientrB)
 
-[name=DIV1, description='Total dividends minus re-entries']
+[name=DIV1]
 DIV1 = DIV - RIENTR
 
-[name=PSALVA0, description='Set government bailout to 0']
+[name=PSALVA0]
 PSALVA = 0
 
-[name=PSALVA, condition=-DIV1 > OMEGAH, description='Set bailout']
+[name=PSALVA, condition=-DIV1 > OMEGAH]
 PSALVA = - DIV1 - OMEGAH
 
-[name=DIV1H, condition=-DIV1 > OMEGAH, description='Total dividends minus re-entries']
+[name=DIV1H, condition=-DIV1 > OMEGAH]
 DIV1 = - OMEGAH
 
 [name=DIV1_1]
@@ -637,10 +766,8 @@ contr = 1
 [name=contrH_d_minmax, condition = min(rD1[sres>0], initial = inf) > max(rD)]
 contr = 1
 
-
 [name=h_select_d]
 h =  h_select_d[rD1==min(rD1)][0]
-
 
 [name = sres_d]
 sres = 0
@@ -711,7 +838,6 @@ rientrF = random.uniform(0,1,(F)) * min(omegaF[omegaF > omegaFF])
 
 [name=pF, condition=omegaF <= omegaFF && defF != F, description='Price of replaced firms when all have defaulted']
 price = mean(price[omegaF>omegaFF])
-//price = mean(price)
 
 [name=rientrF0, description='Initial setting of net worth of replaced firms to zero']
 rientrF = 0
@@ -798,7 +924,6 @@ omegaF = rientrF
 
 //End of defaulting reset equations
 
-
 //Credit matching equations
 [name=betaFeffmin]
 betaFeff = fmin(fmin(betaBres, betaBmax), betaFres)
@@ -831,7 +956,6 @@ lab = lab + 1
 
 [name = labnet_L]
 labnet = labnet + w
-
 
 //Goods market
 [name=y_1]
@@ -1029,7 +1153,6 @@ betaB = fmin(k1, k2)
 [name=intCB]
 intCB = rCB * m
 
-
 //Defaulting reset equations
 [name=pigrBdef, condition = omegaB<=omegaBB]
 pigrB = 0
@@ -1046,7 +1169,6 @@ deltaB_1 = 0
 [name=rDdef, condition = omegaB<=omegaBB]
 rD = rCB
 //rD = mean(rD[omegaB<=omegaBB])
-
 
 [name=rB1def,  condition = omegaB<=omegaBB]
 rB1 = mean(rB1)
@@ -1265,6 +1387,38 @@ rCB = (INFL + 0.5 * (INFL - inflT) + 0.5 * (ur - unempT))
 ;
 
 STEPS
+
+//STEPS block declares the order of equations in the model
+//  Input:
+//  ----------
+//  NAME_OF_EQUATION
+//
+//  Statements:
+//  ----------
+//  while('condition'){
+//
+//      }
+//
+//      While loop. The equations inside the loop will run until the condition becomes false
+//      AND and OR operators are represented as && and || respectively.
+//      
+//  for (f, f_select){
+//      h_select_l[h_select_l]
+//      lab_L[f][h]
+//      }
+//  
+//      For loop. The model will iterate f over the f_select matrix.
+//      Equation indexing can be done by adding ['iterator'] after the equation name
+//
+//  if ('condition'){
+//
+//      }
+//
+//      If condition. The equation inside the brackets will only run if the condition is true.
+//      AND and OR operators are represented as && and || respectively.
+
+
+
 //========================================================================================================
 G0
 // FIRM/BANK ReENTRY
