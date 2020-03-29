@@ -3,83 +3,73 @@ import numpy as np
 import os
 import pickle
 
-def repl(m):
-    return '#' * len(m.group())
-
-def split_by_idx(s, list_of_indices):
-    if len(list_of_indices) > 0:
-        left, right = 0, list_of_indices[0]
-        yield s[left:right]
-        left = right+1
-        for right in list_of_indices[1:]:
-            yield s[left:right]
-            left = right
-    else:
-        left = 0
-    yield s[left:]
-
-def push(obj, l, depth):
-    while depth:
-        l = l[-1]
-        depth -= 1
-    l.append(obj)
-
-def rec_iter_groups(groups):
-    while ~all(isinstance(group, (str)) for group in groups):
-        if all(isinstance(group, (str)) for group in groups):
-            groups = ''.join(groups)
-            if '||' in groups or '&&' in groups:
-                groups = groups.split('&&')
-                new_groups = groups[0]
-                for group in groups[1:]:
-                    new_groups = '('+new_groups+') * (' +group+')'
-                groups = ''.join(new_groups)
-                groups = groups.split('||')
-                new_groups = groups[0]
-                for group in groups[1:]:
-                    new_groups = 'fmin(('+new_groups+') + (' +group+'), 1)'
-                groups = ''.join(new_groups)
-            return groups
-        else:
-            for i in range(len(groups)):
-                if type(groups[i]) == str:
-                    continue
-                else:
-                    groups[i] = rec_iter_groups(groups[i])
-
-def replace_elem(s, elem, elem_):
-    validStoppers = [' ', '+', '-', '*', '@', '/', '(', ')',',', '=', '!', '>', '<', '.T', '[', ']', ':']
-    maxStoppersLen = max(len(x) for x in validStoppers)
-    i = 0
-    length_S = len(s)
-    while i < (length_S):
-        cur_s = s[i:i+len(elem)]
-        if cur_s == elem:
-            lhs = [s[max(i-1-Si, 0):max(0,i)] for Si in range(maxStoppersLen)]
-            rhs = [s[min(i+len(elem), len(s)-1):min(i+len(elem)+Si+1, len(s))] for Si in range(maxStoppersLen)]
-            if (i-1<0 and (len(set(rhs) & set(validStoppers)) > 0))\
-                    or (i+len(elem)==len(s) and (len(set(lhs) & set(validStoppers)) > 0))\
-                    or ((len(set(lhs) & set(validStoppers)) > 0) and (len(set(rhs) & set(validStoppers)) > 0))\
-                    or (i+len(elem)==len(s) and i-1<0):
-
-                s_lhs = s[:i]
-                s_rhs = s[i+len(elem):]
-                s = s_lhs+elem_+s_rhs
-                length_S = len(s)-len(elem)+1
-                i = i +len(elem_)-1
-        i = i + 1
-    return s
-
-def run_parallel(arg):
-    from compiledModel import run
-    iterations = arg[0]
-    params = arg[1]
-    verbose = arg[2]
-    dbase = run(iterations, params, verbose)
-    dbase = dseries(dbase[0], dbase[1])
-    return dbase
-
 class ABM:
+    """
+    Object containing model preprocessing in addition to routines related to
+    running the model and estimation.
+    ...
+    
+    Parameters
+    ----------
+    modfile : string
+        filename of the model file.
+        
+    cache : bool
+        True will overwrite any previously generated compiled model.
+        False will not overwrite, but will still preprocess the model.
+    
+    Attributes
+    ----------
+    blocks : dict
+        Contains parsed output of model preprocessing.
+    
+    params : ndarray
+        Numpy array containing model parameters.
+    
+    supported_numpy_functions : list of str
+        Includes all the numpy functions allowed during model compilation.
+        Most functions can be freely added in principle, however, others may require
+        additional parsing. Modify with care.
+        If a variable in the model is named exactly the same as any variable in this list,
+        the preprocessor will throw an error.
+        
+    supported_numpy_arguments: list of str
+        Includes all the numpy function arguments allowed during model compilation.
+        If a variable in the model is named exactly the same as any variable in this list,
+        the preprocessor will throw an error.
+        
+    supported_statements: list of str
+        Supported statements in model file. 
+        Warning! Any additional statement requires a proper implementation.
+    
+    hard_coded_names: list of str
+        Variable names reserved for the final compiled model.
+        Variables in the model cannot share a name with hard coded variables,
+        however, the model file can refer to them in equations, endogenous variable 
+        initialization, model steps etc.
+        
+    Methods
+    ----------
+    run(iterations=1000, plot=True, params = [], verbose = 1)
+        Runs the model for the specified amount of iterations.
+        Returns dseries object containing simulated data.
+        
+    estimate(dbase = dbase, initial_params = params, estimated_vars = [], iterations = 1000, batch = 10, start = 0, step=0.001, parallel = False):
+        Estimates model parameters using Metropolis-Hastings with simulated maximum likelihood. 
+        Kukacka, J., & Barunik, J. (2017). Estimation of financial agent-based models with simulated maximum likelihood.
+             Journal of Economic Dynamics and Control, 85, 21–45. doi:10.1016/j.jedc.2017.09.006 
+    
+    plot_normalize(normalization_input={})
+        Sets variables to be normalized during plotting and on which variable they should be normalized.
+        Example: {'OMEGAH':'Pm'}
+            The variable OMEGAH will be normalized using the variables of the variable Pm
+            
+    numba_functions()
+        Class containing user made functions. Main use is to permit numba compilation with
+        custom built versions of incompatible numpy functions. 
+        Functions can also be built for use in the model.
+    
+    """
     def __init__(self, modfile, cache=False):
         # Initialize variables necessary regardless of compilation
         self.plot_normalization = {}
@@ -357,8 +347,6 @@ class ABM:
                             raise ValueError('Syntax Error: Invalid brackets in ' + eq)
                         while '(' in option_split_no_parenthesis or ')' in option_split_no_parenthesis:
                             option_split_no_parenthesis = re.sub('\([^\(\)]*\)', repl, option_split_no_parenthesis)
-                        #while '[' in option_split_no_parenthesis or ']' in option_split_no_parenthesis:
-                        #    option_split_no_parenthesis = re.sub('\[[^\[\]]*\]', repl, option_split_no_parenthesis)
                         option_split_idx = [c for c in range(len(option_split_no_parenthesis)) if option_split_no_parenthesis[c] == ',']
                         option_split = [opt for opt in split_by_idx(option_split, option_split_idx)]
 
@@ -719,9 +707,6 @@ class ABM:
             else:
                 raise ValueError('Syntax Error: Cannot understand step \"' + step + '\"')
 
-        #compiled_file.append(whiteSpaceCounter*whiteSpace+'if t == t_test:\n')
-        #compiled_file.append((whiteSpaceCounter+1)*whiteSpace+'quit()\n')
-
         # TEMPORARY UNTIL NICER SOLUTION
         agents = list(self.blocks['ENDO_VAR'].keys())
         for agent in agents:
@@ -742,19 +727,22 @@ class ABM:
             for l in function:
                 compiled_file.append(l+'\n')
 
-        #TODO
-        #Restore order of EXO_PARAM and ENDO_INIT to that in the modfile
-        #Add estimation routine
-        #Add forward looking model
-        #Add lag option for equations
         if writeModel == True:
             with open('compiledModel.py', 'w') as f:
                 for l in compiled_file:
                     f.write(l)
         else:
             print('Warning: Model loaded from cache')
+            
+        #Test model simulation and compile with numba if model changed.
+        self.run(1, plot=False, verbose = 0)
 
     def _get_formula(self, eq, rhs, init=False, lag=0, iterators=[]):
+        """
+        Returns parsed equation.
+        
+        """
+        
         # Store equation for parsing purposes
         eq_parse = eq
         # Parse elements of the equation
@@ -766,8 +754,8 @@ class ABM:
         for term in eq_parse:
             if term in self.model_ENDO_VARS:
                 eq = replace_elem(eq, term, self._get_variable(term, rhs, init=init, lag=lag, iterators=iterators))
-            elif term in self.numba_func.all_functions():
-                self.numba_func.add_to_include(term)
+            elif term in self.numba_func._all_functions():
+                self.numba_func._add_to_include(term)
                 continue
             elif term in self.supported_numpy_functions:
                 eq = replace_elem(eq, term, 'np.'+term)
@@ -784,6 +772,11 @@ class ABM:
         return eq
 
     def _get_variable(self, var, rhs, init=False, lag=0, iterators=[]):
+        """
+        Returns endo_var used in the equation with the correct indexing and lag.
+        
+        """
+    
         #We use the reverse mapping to directly retrieve the agent of a variable, and consequently to which database it refers to.
         agent = self.endo_var_agent_map[var]['AGENT']
         index = self.endo_var_agent_map[var]['INDEX']
@@ -815,6 +808,10 @@ class ABM:
                 return prec_arg_l+agent + '[t-'+str(lag)+', '+iterator+', ' + str(index) + ']'+append_group+prec_arg_r
 
     def _get_matrix(self, var, rhs, lag=0, iterators=[]):
+        """
+        Returns endo_mat used in the equation with the correct indexing and lag.
+        
+        """
         #We use the reverse mapping to directly retrieve the agent of a variable, and consequently to which database it refers to.
         num_iterators = len(self.blocks['ENDO_MAT'][var]['tags'])
         if lag == 0:
@@ -864,11 +861,45 @@ class ABM:
             return prec_arg_l+var+'['+mat_index[0]+"".join([', '+i for i in mat_index[1:]])+']'+prec_arg_r
 
     def plot_normalize(self, normalization_input):
+        """
+        Modifies internal variable which specifies variables to normalize during plotting.
+        
+        Parameters
+        ----------
+        normalization_input : dict
+            Dictionary with normalization input.
+        """
+        
         self.plot_normalization = normalization_input
 
-    def run(self, iterations, plot=False, params = [], verbose = 0):
+    def run(self, iterations, plot=False, params = np.array([]), verbose = 0):
+        """
+        Runs simulation for selected amount of iterations.
+        
+        Parameters
+        ----------
+        iterations : int
+            Number of times to iterate the model.
+            
+        plot : bool
+            True will plot all the variables in the model in a folder named after the model file and the selected number of iterations.
+            
+        params : ndarray
+            Parametrization to use in the model. Default will use parametrization currently saved in the preprocessor object.
+            
+        verbose : int
+            1 will output values of the variables as the model runs. For debugging purposes.
+            
+        Returns
+        ----------
+        
+        dbase : dseries
+            dseries object containing the simulated data.
+        """
+    
+    
         from compiledModel import run
-        if params == []:
+        if len(params) == 0:
             params = self.params
         dbase = run(iterations, params, verbose)
         dbase = dseries(dbase[0], dbase[1])
@@ -894,6 +925,59 @@ class ABM:
         return dbase
 
     def estimate(self, dbase, initial_params, estimated_vars, iterations = 1000, batch = 10, start = 0, step=0.001, parallel = False):
+        """
+        Estimates selected parameters on selected variables using a Metropolis-Hastings algorithm with simulated maximum likelihood.
+    
+        Parameters
+        ----------
+        dbase : dseries
+            Data on which the model is to be estimated.
+            
+        initial_params : dict
+            Selected parameters to estimate and their initial guesses.
+            
+        estimated_vars : list of str
+            Selected variables used to compute simulated maximum likelihood.
+            
+        iterations : int
+            Number of iterations of the metropolis algorithm.
+            
+        batch : int
+            Number of times the model is to be ran on a single parametrization.
+            
+        step : float
+            Metropolis-Hastings step size.
+            
+        parallel : bool
+            True will run the batch of models using multiple processors for the current parametrization.
+            False will run the model one by one.
+            
+        Returns
+        -------
+        params : ndarray
+            The estimated parametrization at the end of the algorithms' run.
+                
+        """
+        def SMLE(y, yhat, batch):
+            """ 
+            Computes simulated maximum likelihood for a single variable.
+            
+            """
+            
+            def Kn(ye, eta, N):
+                return K(ye/np.sqrt(eta), eta, N)/np.sqrt(eta)
+
+            def K(psi, eta, N):
+                return (1/(np.sqrt(2*np.pi)*np.std(psi))*N)*np.exp(-(abs(psi)**2)/(2*(np.std(psi)**2)))
+            def likelihood(pt):
+                return np.sum(np.log(pt))
+            N = batch
+            sigmahat = np.std(yhat, axis=0)
+            eta = ((4/(3*N))**(1/5))*sigmahat
+            ye = yhat - y
+            pt = 1/N * np.sum(Kn(ye, eta, N), axis=1)
+            return likelihood(pt)
+            
         import matplotlib.pyplot as plt
         if parallel == True:
             import multiprocessing as mp
@@ -944,7 +1028,7 @@ class ABM:
             self.params_prev = self.params
             new_loglik = 0
             for n in estimated_vars:
-                new_loglik = new_loglik + self.SMLE(dbase[n], dbase_new[n], batch)
+                new_loglik = new_loglik + SMLE(dbase[n], dbase_new[n], batch)
             print(new_loglik)
             print(params_eval)
             if new_loglik>old_loglik:
@@ -982,28 +1066,24 @@ class ABM:
             
         return params_prev
 
-    def SMLE(self, y, yhat, batch):
-        def Kn(ye, eta, N):
-            return K(ye/np.sqrt(eta), eta, N)/np.sqrt(eta)
-
-        def K(psi, eta, N):
-            return (1/(np.sqrt(2*np.pi)*np.std(psi))*N)*np.exp(-(abs(psi)**2)/(2*(np.std(psi)**2)))
-        def likelihood(pt):
-            return np.sum(np.log(pt))
-        N = batch
-        #print(yhat.shape)
-        sigmahat = np.std(yhat, axis=0)
-        #print(sigmahat)
-        #print(sigmahat)
-        eta = ((4/(3*N))**(1/5))*sigmahat
-        #print(eta)
-        #quit()
-        #eta = eta.reshape(len(eta),1, 1)
-        ye = yhat - y#.reshape((len(y),1, 1))
-        pt = 1/N * np.sum(Kn(ye, eta, N), axis=1)
-        return likelihood(pt)
-
     class numba_functions:
+        """
+        Object containing user built functions.
+        !!!Temporary solution until something better!!!
+
+        Attributes:
+        ----------
+        func : dict
+        Dictionary containing user made functions.
+        Example:
+        
+        >>> self.func['isclose'] = \"\"\"@njit(cache = True)
+def isclose(a, b, rel_tol=1e-09, abs_tol=0.0):
+    diff = np.abs(b - a)
+    return np.fmin(np.fmin((diff <= np.abs(rel_tol * b)) + (diff <= np.abs(rel_tol * a)), 1) + (diff <= abs_tol), 1)\"\"\"
+        
+
+        """
         def __init__(self):
             self.func = dict()
             self.include = []
@@ -1040,17 +1120,82 @@ def nansum(x, axis = 0):
     return temp_nan_sum"""
 
         def __getitem__(self, func_name):
+            """
+            Returns function 'func_name' from dictionary.
+            """
+            
             return self.func[func_name]
 
-        def all_functions(self):
+        def _all_functions(self):
+            """
+            Returns name of all functions in dictionary.
+            """
+            
             return list(self.func.keys())
 
-        def add_to_include(self, func_name):
+        def _add_to_include(self, func_name):
+            """
+            Adds name of a function in the dictionary if found in the model file.
+            Used to only include custom functions if called in the model file.
+            """
+            
             self.include.append(func_name)
             self.include = list(set(self.include))
 
 
 class dseries:
+    """
+    Database object. Used primarily to contain model simulation output and to compute simulated maximum likelihood during estimation.
+    ...
+    
+    Parameters
+    ----------
+    db : list of ndarray
+        List containing the matrix for each agent in the model
+        
+    db_name : list of list of str
+        List containing a list for each agent of the variable names.
+        
+    Example: 
+    
+    >>> dbase = dseries([BANK, FIRMS],[['OMEGAB', 'LAMBDAB'], ['OMEGAF', 'OMEGAB'])
+    
+    >>> dbase = dseries([],[])
+    >>> dbase.load('dbase.dat')
+    
+    
+    Attributes
+    ----------
+    names : list of str
+        Contains the name of all the variables in the database
+        
+    Example:
+    
+    >>> for name in dbase.names:
+            print(name)
+            print(dbase[name])
+        
+    Methods
+    ----------
+    save(filename = 'dbase')
+        Saves the database in a pickled file named after 'filename'.
+        Note that .dat is added automatically after 'filename'.
+        
+    load(filename = 'dbase.dat')
+        Loads the database saved in 'filename'.
+        The previous database is overwritten with the new data.
+        Note that .dat is required in the 'filename' input.
+        
+    pop(var_name = 'OMEGAB')
+        Deletes variable 'var_name' from the database.
+    
+    
+    Returns
+    -------
+    out : dseries
+        A dseries object containing the specified data.
+    """
+    
     def __init__(self, db, db_name):
         self.data = []
         self.names = []
@@ -1062,6 +1207,17 @@ class dseries:
                 self.names.append(db_name[i][n])
 
     def __getitem__(self, var_name, lag = 0):
+        """
+        Returns ndarray containing selected data.
+        
+        Example:
+        
+        >>> dbase['OMEGAB']
+        
+        array([[2, 3]])
+
+        """
+        
         if isinstance(var_name, tuple):
             lag = var_name[1]
             var_name = var_name[0]
@@ -1075,6 +1231,13 @@ class dseries:
         raise ValueError('Variable "'+var_name+'" does not exist in database')
 
     def  __setitem__(self, var_name, value):
+        """
+        Adds or replaces variable 'var_name' with 'value'.
+        Value must be ndarray.
+        
+        """
+    
+    
         if var_name in self.names:
             self.data[self.names.index(var_name)] = value
         else:
@@ -1084,12 +1247,20 @@ class dseries:
             self.data.append(value)
 
     def save(self, filename):
+        """
+        Saves dseries data to 'filename'.
+        
+        """
         dat = [self.data, self.names]
         with open(filename+'.dat', 'wb') as f:
             pickle.dump(dat, f)
         print("Database saved to: "+filename+'.dat')
 
     def load(self, filename):
+        """
+        Loads dseries data stored in 'filename'.
+        
+        """
         with open(filename, 'rb') as f:
             dat = pickle.load(f)
         self.data = dat[0]
@@ -1097,6 +1268,10 @@ class dseries:
         return self
 
     def pop(self, var_name):
+        """
+        Deletes variable in 'var_name' from dseries object.
+        
+        """
         if var_name in self.names:
             i = self.names.index(var_name)
             self.names.pop(i)
@@ -1106,74 +1281,167 @@ class dseries:
         return self
 
     def __add__(self, other):
+        """
+        EXPERIMENTAL
+        
+        Concatenates data from one dseries with that of another dseries for each variable they have in common.
+        
+        """
         for n in self.names:
             self[n] = np.concatenate((self[n], other[n]), axis=0)
         return self
 
+
+def repl(m):
+    """
+    Generates string of # of length m.
+    Function used to replace text inside parenthesis during equation parsing so
+    that regex does not split content between parenthesis.
+    
+    """
+    return '#' * len(m.group())
+
+def split_by_idx(s, list_of_indices):
+    """
+    Splits list relative to a list of indices.
+    
+    """
+    if len(list_of_indices) > 0:
+        left, right = 0, list_of_indices[0]
+        yield s[left:right]
+        left = right+1
+        for right in list_of_indices[1:]:
+            yield s[left:right]
+            left = right
+    else:
+        left = 0
+    yield s[left:]
+
+def push(obj, l, depth):
+    """
+    Helper function used in rec_iter_groups.
+    
+    """
+    while depth:
+        l = l[-1]
+        depth -= 1
+    l.append(obj)
+
+def rec_iter_groups(groups):
+    """
+    Function used to safely parse conditional statements so that they respect parenthesis order.
+    
+    """
+
+    while ~all(isinstance(group, (str)) for group in groups):
+        if all(isinstance(group, (str)) for group in groups):
+            groups = ''.join(groups)
+            if '||' in groups or '&&' in groups:
+                groups = groups.split('&&')
+                new_groups = groups[0]
+                for group in groups[1:]:
+                    new_groups = '('+new_groups+') * (' +group+')'
+                groups = ''.join(new_groups)
+                groups = groups.split('||')
+                new_groups = groups[0]
+                for group in groups[1:]:
+                    new_groups = 'fmin(('+new_groups+') + (' +group+'), 1)'
+                groups = ''.join(new_groups)
+            return groups
+        else:
+            for i in range(len(groups)):
+                if type(groups[i]) == str:
+                    continue
+                else:
+                    groups[i] = rec_iter_groups(groups[i])
+
+def replace_elem(s, elem, elem_):
+    """
+    Function used to replace a variable with its ndarray form.
+    Convoluted but necessary due to the fact that naively replacing strings
+    could mistake a variable with another with similar names (OMEGAB becoming BANK[t,1,:],
+    mistaking OMEGAB_Pm for OMEGAB, and thus returning BANK[t,1,:]_Pm)
+    
+    """
+    validStoppers = [' ', '+', '-', '*', '@', '/', '(', ')',',', '=', '!', '>', '<', '.T', '[', ']', ':']
+    maxStoppersLen = max(len(x) for x in validStoppers)
+    i = 0
+    length_S = len(s)
+    while i < (length_S):
+        cur_s = s[i:i+len(elem)]
+        if cur_s == elem:
+            lhs = [s[max(i-1-Si, 0):max(0,i)] for Si in range(maxStoppersLen)]
+            rhs = [s[min(i+len(elem), len(s)-1):min(i+len(elem)+Si+1, len(s))] for Si in range(maxStoppersLen)]
+            if (i-1<0 and (len(set(rhs) & set(validStoppers)) > 0))\
+                    or (i+len(elem)==len(s) and (len(set(lhs) & set(validStoppers)) > 0))\
+                    or ((len(set(lhs) & set(validStoppers)) > 0) and (len(set(rhs) & set(validStoppers)) > 0))\
+                    or (i+len(elem)==len(s) and i-1<0):
+
+                s_lhs = s[:i]
+                s_rhs = s[i+len(elem):]
+                s = s_lhs+elem_+s_rhs
+                length_S = len(s)-len(elem)+1
+                i = i +len(elem_)-1
+        i = i + 1
+    return s
+
+def run_parallel(arg):
+    """
+    Function used to run parallel model. Must be outside object due
+    to restrictions with multiprocessing regarding object pickling.
+    
+    """
+
+
+    from compiledModel import run
+    iterations = arg[0]
+    params = arg[1]
+    verbose = arg[2]
+    dbase = run(iterations, params, verbose)
+    dbase = dseries(dbase[0], dbase[1])
+    return dbase
+
 if __name__ == "__main__":
 
-    model = ABM('model.txt', cache=True)
-    model.run(1, plot=False, verbose = 0)
-    model.plot_normalize({'BADB':'Pm',
-                      'BETAB':'Pm',
-                      'BETABREAL':'Pm',
-                      'BETABRES':'Pm',
-                      'BETAF':'Pm',
-                      'BETAFREAL':'Pm',
-                      'BETAFRES':'Pm',
-                      'C':'Pm',
-                      'CRES':'Pm',
-                      'DELTAH':'Pm',
-                      'DIV':'Pm',
-                      'DIV1':'Pm',
-                      'GAMMAB':'Pm',
-                      'GAMMAF':'Pm',
-                      'GAMMAFres':'Pm',
-                      'Gw':'Pm',
-                      'INTB':'Pm',
-                      'INTCB':'Pm',
-                      'INTCBb':'Pm',
-                      'INTF':'Pm',
-                      'INTPDEBTB':'Pm',
-                      'LAMBDAB':'Pm',
-                      'LAMBDAF':'Pm',
-                      'M':'Pm',
-                      'OMEGAB':'Pm',
-                      'OMEGAF':'Pm',
-                      'OMEGAF0':'Pm',
-                      'OMEGAF':'Pm',
-                      'OMEGAH':'Pm',
-                      'PIGRB':'Pm',
-                      'PIGRF':'Pm',
-                      'PSALVA':'Pm',
-                      'Pdebt':'Pm',
-                      'PdebtCB':'Pm',
-                      'Pdef':'Pm',
-                      'Ptot':'Pm',
-                      'Ptot2':'Pm',
-                      'Ptot3':'Pm',
-                      'SPESA':'Pm',
-                      'TaxB':'Pm',
-                      'TaxF':'Pm',
-                      'TaxH':'Pm',
-                      'TaxPatrF':'Pm',
-                      'TaxPatrH':'Pm',
-                      'Wm':'Pm',
-                      'Wm0':'Pm',
-                      'Wtot':'Pm'})
+    #Preprocess model.txt and construct ABM object for simulation and estimation
+    model = ABM('model.txt', cache=False)
+    
+    #Set variables to be normalized during plotting after model simulation
+    model.plot_normalize({'BADB':'Pm','BETAB':'Pm','BETABREAL':'Pm',
+                          'BETABRES':'Pm','BETAF':'Pm','BETAFREAL':'Pm',
+                          'BETAFRES':'Pm','C':'Pm','CRES':'Pm',
+                          'DELTAH':'Pm','DIV':'Pm','DIV1':'Pm',
+                          'GAMMAB':'Pm','GAMMAF':'Pm','GAMMAFres':'Pm',
+                          'Gw':'Pm','INTB':'Pm','INTCB':'Pm',
+                          'INTCBb':'Pm','INTF':'Pm','INTPDEBTB':'Pm',
+                          'LAMBDAB':'Pm','LAMBDAF':'Pm','M':'Pm',
+                          'OMEGAB':'Pm','OMEGAF':'Pm','OMEGAF0':'Pm',
+                          'OMEGAF':'Pm','OMEGAH':'Pm','PIGRB':'Pm',
+                          'PIGRF':'Pm','PSALVA':'Pm','Pdebt':'Pm',
+                          'PdebtCB':'Pm','Pdef':'Pm','Ptot':'Pm',
+                          'Ptot2':'Pm','Ptot3':'Pm','SPESA':'Pm',
+                          'TaxB':'Pm','TaxF':'Pm','TaxH':'Pm',
+                          'TaxPatrF':'Pm','TaxPatrH':'Pm',
+                          'Wm':'Pm','Wm0':'Pm','Wtot':'Pm'})
                       
-    iterations = 10
-    dbase = model.run(iterations, plot=False, verbose = 0)
-    #dbase.save('dbase')
-    #dbase = dseries([],[])
-    #dbase.load('dbase.dat')
+    #Run model
+    dbase = model.run(iterations = 10, plot=False, verbose = 0)
+    
+    #Save simulation results
+    dbase.save('dbase')
+    
+    #Set parameters to be estimated and initial guesses
     params = {'adjF': 0.1,
               'adjFprice': 0.1,
               'adjFleva': 0.1,
               'adjB': 0.1,
               'adjH': 0.1,
               }
+              
+    #Set variables used to estimate parameters
     estimated_vars = ['w', 'rD1', 'levat', 'price', 'd', 'rB1', 'db', 'rD']
+    
+    #Run estimation
     params = model.estimate(dbase, initial_params=params, estimated_vars=estimated_vars, 
                             iterations = 10000, start = 0, parallel = True)
 
