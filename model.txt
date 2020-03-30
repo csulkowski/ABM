@@ -1,10 +1,10 @@
 // Macro Modfile
-//This model file structure is composed of blocks
+//Model file structure is composed of blocks
 //SETTINGS - Sets model wide options
 //AGENTS - Declares agents
 //ENDO_VAR - Declares endogenous variables
-//ENDO_MAT - Declares matrix (Used in this case to store agent interactions)
-//MAT_TYPE - Declares matrix variable type
+//ENDO_MAT - Declares matrices (Used in this case to store agent interactions)
+//MAT_TYPE - Declares matrices variable type
 //ENDO_INIT - Declares initial values of endogenous variables
 //EXO_PARAM - Declares model parameters
 //ENDO_EQ - Declares model equations
@@ -45,7 +45,7 @@ AGENTS
 //Agents block declares the agents in the model and additional options
 //  Input:
 //  ----------
-//  'NAME OF AGENT' = [depend = None, num = 1, tag = N, iterator = n, group = n_select]
+//  NAME_OF_AGENT = [depend = None, num = 1, tag = N, iterator = n, group = n_select]
 //
 //  Parameters:
 //  ----------
@@ -269,12 +269,12 @@ M
 
 ENDO_MAT
 
-//Endo_mat block declares matrix used independently of endogenous variables
+//Endo_mat block declares matrices used independently of endogenous variables
 //Declaration generally follows the numpy format without np. 
-//To refer to the number of agents in an agent class, use its 'tag'
+//To refer to the number of agents in an agent class, use its 'tag'.
 //  Example:
 //  ----------
-//  'var_name' = zeros((tag1,tag2))
+//  var_name = zeros((tag1,tag2))
 //
 
 b_f_credit_betaFeff = zeros((B,F))
@@ -290,7 +290,7 @@ MAT_TYPE
 //Mat_type block declares matrix types if needed.
 //  Example:
 //  ----------
-//  'var_name' = float64
+//  var_name = float64
 
 
 ;
@@ -430,8 +430,8 @@ ENDO_EQ
 //      Declares the name of the equation as it will be used in the STEPS block.
 //
 //  condition : str
-//      Condition for which this equation is evaluated. If the condition involves a variable with many values,
-//      say the wealth of households, the equation will only apply to those elements where the condition is true, and 
+//      Condition for which this equation is evaluated. If the condition involves a variable with many values at time t,
+//      say the individual wealth of households, the equation will only apply to those elements where the condition is true, and 
 //      those where it is false will not change.
 //      AND and OR operators are represented as && and || respectively.
 //      
@@ -441,7 +441,7 @@ ENDO_EQ
 //  [name=NAME_OF_EQUATION', condition=1>0]
 //  var_name = 1+1
 //
-//  In the equation above, the variable var_name will equal 2 if 1>0 when NAME_OF_EQUATION of called.
+//  In the equation above, the variable var_name will equal 2 if 1>0 when NAME_OF_EQUATION is called.
 //
 //  [name=NAME_OF_EQUATION', condition=omegaB>0]
 //  OMEGA = 1+1
