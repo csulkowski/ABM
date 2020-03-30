@@ -34,7 +34,7 @@ SETTINGS
 //  show_values : bool
 //      True will output values of the variables as the model runs. For debugging purposes.
 
-float_isclose = 0
+isclose = 0
 numba = False
 show_values = False
 ;
