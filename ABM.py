@@ -52,7 +52,7 @@ class ABM:
         
     Methods
     ----------
-    run(iterations=1000, plot=True, params = [], verbose = 1)
+    run(iterations=1000, plot=False, params = [], verbose = False)
         Runs the model for the specified amount of iterations.
         Returns dseries object containing simulated data.
         
@@ -589,7 +589,7 @@ class ABM:
         compiled_file.append('    for t in range(iterations):\n')
         compiled_file.append('        if t == 0:\n')
         compiled_file.append('            continue\n')
-        compiled_file.append('        if verbose == 1:\n')
+        compiled_file.append('        if verbose == True:\n')
         compiled_file.append('            print(t)\n')
 
         whiteSpaceCounter = 2
@@ -729,7 +729,7 @@ class ABM:
             print('Warning: Model loaded from cache')
             
         #Test model simulation and compile with numba if model changed.
-        self.run(1, plot=False, verbose = 0)
+        self.run(1, plot=False, verbose = False)
 
     def _get_formula(self, eq, rhs, init=False, lag=0, iterators=[]):
         """
@@ -866,7 +866,7 @@ class ABM:
         
         self._plot_normalization = normalization_input
 
-    def run(self, iterations, plot=False, params = np.array([]), verbose = 0):
+    def run(self, iterations, plot=False, params = np.array([]), verbose = False):
         """
         Runs simulation for selected amount of iterations.
         
@@ -918,7 +918,7 @@ class ABM:
                     plt.clf()
         return dbase
 
-    def estimate(self, dbase, initial_params, estimated_vars, iterations = 1000, batch = 10, start = 0, step=0.001, parallel = False):
+    def estimate(self, dbase, initial_params, estimated_vars, iterations = 1000, batch = 10, start = 0, step=0.0001, parallel = False):
         """
         Estimates selected parameters on selected variables using a Metropolis-Hastings algorithm with simulated maximum likelihood.
     
@@ -968,7 +968,7 @@ class ABM:
             N = batch
             sigmahat = np.std(yhat, axis=0)
             eta = ((4/(3*N))**(1/5))*sigmahat
-            ye = yhat - y
+            ye = y - yhat
             pt = 1/N * np.sum(Kn(ye, eta, N), axis=1)
             return likelihood(pt)
             
@@ -976,7 +976,7 @@ class ABM:
         if parallel == True:
             import multiprocessing as mp
             pool = mp.Pool(mp.cpu_count())
-        run = 10
+        run = 100
         for n in dbase.names:
             dbase[n] = np.mean(dbase[n], axis=1).reshape((run, 1))
         for n in dbase.names:
@@ -997,7 +997,7 @@ class ABM:
             for p in (param_names):
                 self.params[self.sorted_exo_param.index(p)] = params_eval[p]
             if parallel == True:
-                args = [[run, self.params, 0] for b in range(batch)]
+                args = [[run, self.params, False] for b in range(batch)]
                 with mp.Pool() as pool:
                     output = pool.map(run_parallel, args)
             for b in range(batch):
@@ -1035,26 +1035,34 @@ class ABM:
                     params_prev = params_prev
             
 
-            all_param.append(params_eval)
+            all_param.append(params_eval.copy())
             all_SMLE.append(new_loglik)
             if t % 100 == 0 and t != 0:
                 parsed_all_param = {}
                 for p in param_names:
                     parsed_param = []
-                    for params in all_param:
-                        parsed_param.append(params[p])
+                    for param in all_param:
+                        parsed_param.append(param[p])
                     parsed_all_param[p] = parsed_param
                 fig, axs = plt.subplots(len(param_names), len(param_names), figsize=(15,15))
                 cmap = plt.get_cmap('RdYlGn')
                 colors = cmap((np.array(all_SMLE) - min(all_SMLE))/ np.array(all_SMLE).ptp())
                 for y, p_y in enumerate(param_names):
                     for x, p_x in enumerate(param_names):
-                        axs[x,y].scatter(parsed_all_param[p_x], parsed_all_param[p_y], c = colors, cmap = cmap)
+                        axs[x,y].scatter(parsed_all_param[p_y], parsed_all_param[p_x], c = colors, cmap = cmap)
                 for y_i, y in enumerate(axs):
                     for x_i, x in enumerate(y):
                         x.set(xlabel=param_names[x_i], ylabel=param_names[y_i])
                 for ax in axs.flat:
                     ax.label_outer()
+                plt.savefig('metropolis_distris.png')
+                plt.clf()
+
+                fig, axs = plt.subplots(len(param_names), 1, figsize=(15,15))
+                for y, p_y in enumerate(param_names):
+                    axs[y].plot(parsed_all_param[p_y])
+                for y_i, y in enumerate(axs):
+                    y.set(title=param_names[y_i])
                 plt.savefig('metropolis_res.png')
                 plt.clf()
             
@@ -1397,7 +1405,7 @@ def run_parallel(arg):
 if __name__ == "__main__":
 
     #Preprocess model.txt and construct ABM object for simulation and estimation
-    model = ABM('model.txt', cache=False)
+    model = ABM('model.txt', cache=True)
     
     #Set variables to be normalized during plotting after model simulation
     model.plot_normalize({'BADB':'Pm','BETAB':'Pm','BETABREAL':'Pm',
@@ -1418,7 +1426,7 @@ if __name__ == "__main__":
                           'Wm':'Pm','Wm0':'Pm','Wtot':'Pm'})
                       
     #Run model
-    dbase = model.run(iterations = 10, plot=False, verbose = 0)
+    dbase = model.run(iterations = 100, plot=False, verbose = 0)
     
     #Save simulation results
     dbase.save('dbase')
@@ -1436,5 +1444,5 @@ if __name__ == "__main__":
     
     #Run estimation
     params = model.estimate(dbase, initial_params=params, estimated_vars=estimated_vars, 
-                            iterations = 10000, start = 0, parallel = True)
+                            iterations = 100000, start = 0, parallel = True)
 
