@@ -74,7 +74,7 @@ class ABM:
     """
     def __init__(self, modfile, cache=False):
         # Initialize variables necessary regardless of compilation
-        self.plot_normalization = {}
+        self._plot_normalization = {}
         
         if cache == False or not(os.path.exists("compiledModel.py")):
             writeModel = True
@@ -856,7 +856,7 @@ class ABM:
 
     def plot_normalize(self, normalization_input):
         """
-        Modifies internal variable which specifies variables to normalize during plotting.
+        Modifies 'private' variable which specifies variables to normalize during plotting.
         
         Parameters
         ----------
@@ -864,7 +864,7 @@ class ABM:
             Dictionary with normalization input.
         """
         
-        self.plot_normalization = normalization_input
+        self._plot_normalization = normalization_input
 
     def run(self, iterations, plot=False, params = np.array([]), verbose = 0):
         """
@@ -906,8 +906,8 @@ class ABM:
             else:
                 os.mkdir(folder_to_save_plots)
             for n in dbase.names:
-                if n in list(self.plot_normalization.keys()):
-                    plt.plot(dbase[n]/dbase[self.plot_normalization[n]])
+                if n in list(self._plot_normalization.keys()):
+                    plt.plot(dbase[n]/dbase[self._plot_normalization[n]])
                     plt.suptitle(n)
                     plt.savefig(folder_to_save_plots + n + '.png')
                     plt.clf()
@@ -1353,7 +1353,7 @@ def replace_elem(s, elem, elem_):
     """
     Function used to replace a variable with its ndarray form.
     Convoluted but necessary due to the fact that naively replacing strings
-    could mistake a variable with another with similar names (OMEGAB becoming BANK[t,1,:],
+    could mistake a variable with another with a similar name (OMEGAB becoming BANK[t,1,:],
     mistaking OMEGAB_Pm for OMEGAB, and thus returning BANK[t,1,:]_Pm)
     
     """
@@ -1385,7 +1385,6 @@ def run_parallel(arg):
     to restrictions with multiprocessing regarding object pickling.
     
     """
-
 
     from compiledModel import run
     iterations = arg[0]
