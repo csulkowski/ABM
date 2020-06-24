@@ -1,3 +1,8 @@
+// This model file replicates the Agent-Based Model described in the paper below.
+//
+// Riccetti, L., Russo, A., & Gallegati, M. (2014). An agent based decentralized matching macroeconomic model.
+// Journal of Economic Interaction and Coordination, 10(2), 305–332. doi:10.1007/s11403-014-0130-8
+
 // Macro Modfile
 //Model file structure is composed of blocks
 //SETTINGS - Sets model wide options
