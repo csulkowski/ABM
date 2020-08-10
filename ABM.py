@@ -1426,7 +1426,7 @@ if __name__ == "__main__":
                           'Wm':'Pm','Wm0':'Pm','Wtot':'Pm'})
                       
     #Run model
-    dbase = model.run(iterations = 100, plot=False, verbose = 0)
+    dbase = model.run(iterations = 1000, plot=True, verbose = 1)
     
     #Save simulation results
     dbase.save('dbase')
@@ -1443,6 +1443,13 @@ if __name__ == "__main__":
     estimated_vars = ['w', 'rD1', 'levat', 'price', 'd', 'rB1', 'db', 'rD']
     
     #Run estimation
-    params = model.estimate(dbase, initial_params=params, estimated_vars=estimated_vars, 
+    #Only run the following with a substantial computer
+    #Need more testing but this routine reuqires at least 12gb of ram for this particular model.
+    from psutil import virtual_memory
+    mem = virtual_memory()
+    if mem.total/1000000000<15:
+        raise ValueError('Minimal Ram requirement check failed, this routine requires more memory to safely run.')
+    else:
+        params = model.estimate(dbase, initial_params=params, estimated_vars=estimated_vars, 
                             iterations = 100000, start = 0, parallel = True)
 
